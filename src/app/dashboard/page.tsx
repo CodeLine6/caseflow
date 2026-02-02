@@ -273,33 +273,47 @@ export default function DashboardPage() {
                             </Link>
                         </CardHeader>
                         <CardContent>
-                            <div className="space-y-4">
-                                {recentCases.map((caseItem) => (
-                                    <Link
-                                        key={caseItem.id}
-                                        href={`/cases/${caseItem.id}`}
-                                        className="block p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:-translate-y-0.5"
-                                    >
-                                        <div className="flex items-start justify-between">
-                                            <div className="space-y-1">
-                                                <p className="font-medium">{caseItem.title}</p>
-                                                <p className="text-sm text-muted-foreground">{caseItem.caseNumber}</p>
+                            {recentCases.length > 0 ? (
+                                <div className="space-y-4">
+                                    {recentCases.map((caseItem) => (
+                                        <Link
+                                            key={caseItem.id}
+                                            href={`/cases/${caseItem.id}`}
+                                            className="block p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:-translate-y-0.5"
+                                        >
+                                            <div className="flex items-start justify-between">
+                                                <div className="space-y-1">
+                                                    <p className="font-medium">{caseItem.title}</p>
+                                                    <p className="text-sm text-muted-foreground">{caseItem.caseNumber}</p>
+                                                </div>
+                                                <Badge variant={getStatusBadge(caseItem.status)}>
+                                                    {caseItem.status}
+                                                </Badge>
                                             </div>
-                                            <Badge variant={getStatusBadge(caseItem.status)}>
-                                                {caseItem.status}
-                                            </Badge>
-                                        </div>
-                                        <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
-                                            <span>{caseItem.clientName}</span>
-                                            <span>•</span>
-                                            <span className="flex items-center gap-1">
-                                                <Clock className="w-3 h-3" />
-                                                {formatRelativeTime(caseItem.updatedAt)}
-                                            </span>
-                                        </div>
+                                            <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
+                                                <span>{caseItem.clientName}</span>
+                                                <span>•</span>
+                                                <span className="flex items-center gap-1">
+                                                    <Clock className="w-3 h-3" />
+                                                    {formatRelativeTime(caseItem.updatedAt)}
+                                                </span>
+                                            </div>
+                                        </Link>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-8 text-center">
+                                    <Briefcase className="w-12 h-12 text-muted-foreground/50 mb-3" />
+                                    <p className="text-muted-foreground">No cases yet</p>
+                                    <p className="text-sm text-muted-foreground/70 mt-1">Create your first case to get started</p>
+                                    <Link href="/cases/new" className="mt-4">
+                                        <Button size="sm" variant="outline" className="gap-1">
+                                            <Plus className="w-3 h-3" />
+                                            New Case
+                                        </Button>
                                     </Link>
-                                ))}
-                            </div>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
