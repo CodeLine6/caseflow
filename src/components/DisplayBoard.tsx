@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { io, Socket } from 'socket.io-client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,19 +13,21 @@ import {
     AlertCircle,
     Clock,
     Hash,
+    Wifi,
+    WifiOff,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 interface DisplayBoardEntry {
-    id: string
+    id?: string
     courtNumber: string
     itemNumber: string | null
     caseNumber: string | null
     caseTitle: string | null
     status: string | null
     judgeName: string | null
-    lastUpdated: string
-    court: {
+    lastUpdated?: string
+    court?: {
         id: string
         courtName: string
         displayBoardUrl: string | null
@@ -43,25 +46,49 @@ interface UserHearing {
     } | null
 }
 
+interface DisplayUpdateEvent {
+    courtId: string
+    courtName: string
+    entries: DisplayBoardEntry[]
+    timestamp: string
+}
+
 interface DisplayBoardProps {
     className?: string
 }
 
+const SCRAPER_URL = process.env.NEXT_PUBLIC_SCRAPER_URL || 'http://localhost:3001'
+
 export default function DisplayBoard({ className }: DisplayBoardProps) {
-    const [displayData, setDisplayData] = useState<DisplayBoardEntry[]>([])
+    const [displayData, setDisplayData] = useState<Record<string, DisplayBoardEntry[]>>({})
     const [userHearings, setUserHearings] = useState<UserHearing[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [refreshing, setRefreshing] = useState(false)
-    const [autoRefresh, setAutoRefresh] = useState(true)
+    const [connected, setConnected] = useState(false)
+    const socketRef = useRef<Socket | null>(null)
 
+    // Fetch initial data and user hearings from API
     const fetchDisplayBoard = useCallback(async (showRefreshing = false) => {
         try {
             if (showRefreshing) setRefreshing(true)
             const response = await fetch('/api/display-board')
             if (response.ok) {
                 const data = await response.json()
-                setDisplayData(data.displayData || [])
+
+                // Convert array to court-keyed object
+                const byCourtId: Record<string, DisplayBoardEntry[]> = {}
+                if (data.displayData) {
+                    data.displayData.forEach((entry: DisplayBoardEntry) => {
+                        const courtId = entry.court?.id
+                        if (courtId) {
+                            if (!byCourtId[courtId]) byCourtId[courtId] = []
+                            byCourtId[courtId].push(entry)
+                        }
+                    })
+                }
+
+                setDisplayData(byCourtId)
                 setUserHearings(data.userHearings || [])
                 setError(null)
             } else {
@@ -76,16 +103,62 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
         }
     }, [])
 
+    // Connect to Socket.io for real-time updates
     useEffect(() => {
         fetchDisplayBoard()
     }, [fetchDisplayBoard])
 
-    // Auto-refresh every 60 seconds
     useEffect(() => {
-        if (!autoRefresh) return
-        const interval = setInterval(() => fetchDisplayBoard(), 60000)
-        return () => clearInterval(interval)
-    }, [autoRefresh, fetchDisplayBoard])
+        if (userHearings.length === 0) return
+
+        // Get unique court IDs
+        const courtIds = [...new Set(userHearings.map(h => h.courtId))]
+
+        // Connect to scraper service
+        const socket = io(SCRAPER_URL, {
+            transports: ['websocket', 'polling'],
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+        })
+        socketRef.current = socket
+
+        socket.on('connect', () => {
+            console.log('Connected to scraper service')
+            setConnected(true)
+            // Subscribe to relevant courts
+            socket.emit('subscribe', courtIds)
+        })
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from scraper service')
+            setConnected(false)
+        })
+
+        socket.on('display-update', (data: DisplayUpdateEvent) => {
+            console.log('Received display update:', data.courtId)
+            setDisplayData(prev => ({
+                ...prev,
+                [data.courtId]: data.entries.map(e => ({
+                    ...e,
+                    lastUpdated: data.timestamp,
+                    court: {
+                        id: data.courtId,
+                        courtName: data.courtName,
+                        displayBoardUrl: null
+                    }
+                }))
+            }))
+        })
+
+        socket.on('connect_error', (err) => {
+            console.error('Socket connection error:', err)
+            setConnected(false)
+        })
+
+        return () => {
+            socket.disconnect()
+        }
+    }, [userHearings])
 
     const getStatusColor = (status: string | null) => {
         if (!status) return 'bg-gray-500/10 text-gray-500'
@@ -98,11 +171,16 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
     }
 
     // Check if user has a matching hearing
-    const isUserHearing = (entry: DisplayBoardEntry) => {
+    const isUserHearing = (entry: DisplayBoardEntry, courtId: string) => {
         return userHearings.some(
-            h => h.courtId === entry.court.id && h.courtNumber === entry.courtNumber
+            h => h.courtId === courtId && h.courtNumber === entry.courtNumber
         )
     }
+
+    // Flatten display data for rendering
+    const allEntries = Object.entries(displayData).flatMap(([courtId, entries]) =>
+        entries.map(entry => ({ ...entry, _courtId: courtId }))
+    )
 
     if (loading) {
         return (
@@ -146,15 +224,16 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
                     Live Court Status
                 </CardTitle>
                 <div className="flex items-center gap-2">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setAutoRefresh(!autoRefresh)}
-                        className={cn(autoRefresh && 'text-green-500')}
-                    >
-                        <Clock className="w-4 h-4 mr-1" />
-                        {autoRefresh ? 'Auto' : 'Paused'}
-                    </Button>
+                    <Badge variant="outline" className={cn(
+                        'gap-1',
+                        connected ? 'text-green-500' : 'text-muted-foreground'
+                    )}>
+                        {connected ? (
+                            <><Wifi className="w-3 h-3" /> Live</>
+                        ) : (
+                            <><WifiOff className="w-3 h-3" /> Offline</>
+                        )}
+                    </Badge>
                     <Button
                         variant="outline"
                         size="sm"
@@ -174,7 +253,7 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
                             Retry
                         </Button>
                     </div>
-                ) : displayData.length === 0 ? (
+                ) : allEntries.length === 0 ? (
                     <div className="space-y-4">
                         <p className="text-sm text-muted-foreground mb-4">
                             Your scheduled court rooms for today:
@@ -209,11 +288,11 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {displayData.map((entry) => {
-                            const isMyHearing = isUserHearing(entry)
+                        {allEntries.map((entry, idx) => {
+                            const isMyHearing = isUserHearing(entry, entry._courtId)
                             return (
                                 <div
-                                    key={entry.id}
+                                    key={`${entry._courtId}-${entry.courtNumber}-${idx}`}
                                     className={cn(
                                         'p-4 rounded-lg border transition-all',
                                         isMyHearing
@@ -239,7 +318,7 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
                                                     </Badge>
                                                 )}
                                             </div>
-                                            <p className="font-medium text-lg">{entry.court.courtName}</p>
+                                            <p className="font-medium text-lg">{entry.court?.courtName}</p>
                                             {entry.caseNumber && (
                                                 <p className="text-sm">
                                                     <span className="text-muted-foreground">Case:</span>{' '}
@@ -261,12 +340,14 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
                                             <Badge className={getStatusColor(entry.status)}>
                                                 {entry.status || 'Unknown'}
                                             </Badge>
-                                            <p className="text-xs text-muted-foreground">
-                                                {formatDistanceToNow(new Date(entry.lastUpdated), { addSuffix: true })}
-                                            </p>
+                                            {entry.lastUpdated && (
+                                                <p className="text-xs text-muted-foreground">
+                                                    {formatDistanceToNow(new Date(entry.lastUpdated), { addSuffix: true })}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
-                                    {entry.court.displayBoardUrl && (
+                                    {entry.court?.displayBoardUrl && (
                                         <a
                                             href={entry.court.displayBoardUrl}
                                             target="_blank"
