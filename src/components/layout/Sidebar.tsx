@@ -18,6 +18,8 @@ import {
     Settings,
     ChevronLeft,
     ChevronRight,
+    Monitor,
+    Scale,
     ChevronDown,
     Settings2,
     Plus,
@@ -37,12 +39,14 @@ interface NavItem {
 
 const navItems: NavItem[] = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/cause-list', label: 'Cause List', icon: Scale },
     { href: '/cases', label: 'Cases', icon: Briefcase },
     { href: '/hearings', label: 'Hearings', icon: Calendar },
     { href: '/clients', label: 'Clients', icon: Users },
     { href: '/tasks', label: 'Tasks', icon: CheckSquare },
     { href: '/documents', label: 'Documents', icon: FileText },
     { href: '/courts', label: 'Courts', icon: Building2 },
+    { href: '/display-boards', label: 'Display Boards', icon: Monitor },
     { href: '/workspaces', label: 'Workspaces', icon: Settings2 },
     { href: '/reports', label: 'Reports', icon: BarChart3, permission: 'reports.view' },
     { href: '/settings', label: 'Settings', icon: Settings, permission: 'workspace.manage' },

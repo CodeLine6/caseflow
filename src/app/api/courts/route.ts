@@ -34,7 +34,7 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json()
-        const { courtName, courtType, address, city, state } = body
+        const { courtName, courtType, address, city, state, displayBoardUrl } = body
 
         if (!courtName || !courtType) {
             return NextResponse.json({ error: 'Court name and type are required' }, { status: 400 })
@@ -47,6 +47,7 @@ export async function POST(request: Request) {
                 address,
                 city,
                 state,
+                displayBoardUrl,
             },
         })
 

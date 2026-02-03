@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-    Building2, MapPin, Phone, Scale, Loader2, AlertCircle, ArrowLeft
+    Building2, MapPin, Phone, Scale, Loader2, AlertCircle, ArrowLeft, Plus
 } from 'lucide-react'
+import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -80,6 +81,12 @@ export default function CourtsPage() {
                         <p className="text-muted-foreground mt-1">Manage court information</p>
                     </div>
                 </div>
+                <Link href="/courts/new">
+                    <Button className="gap-2">
+                        <Plus className="w-4 h-4" />
+                        New Court
+                    </Button>
+                </Link>
             </div>
 
             {/* Stats */}

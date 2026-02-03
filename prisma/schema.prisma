@@ -207,20 +207,45 @@ model CaseUpdate {
 // ==================== COURTS ====================
 
 model Court {
-  id        String    @id @default(cuid())
-  courtName String    @unique
-  courtType CourtType
-  address   String?
-  city      String?
-  state     String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  courtName       String    @unique
+  courtType       CourtType
+  address         String?
+  city            String?
+  state           String?
+  displayBoardUrl String?   // URL to the court's online display board
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   // Relations
-  cases     Case[]
+  cases           Case[]
+  displayBoard    DisplayBoardCache[]
 
   @@map("courts")
 }
+
+// Display board data cache - stores current court room status
+model DisplayBoardCache {
+  id            String   @id @default(cuid())
+  courtId       String
+  courtNumber   String   // Court room number (e.g., "1", "2", "DB")
+  itemNumber    String?  // Current item being heard
+  caseNumber    String?  // Current case number
+  caseTitle     String?  // Case title/parties
+  status        String?  // e.g., "IN PROGRESS", "BREAK", "RESERVED"
+  judgeName     String?  // Presiding judge name
+  lastUpdated   DateTime @default(now())
+  rawData       Json?    // Store raw scraped data for reference
+
+  // Relations
+  court         Court    @relation(fields: [courtId], references: [id], onDelete: Cascade)
+
+  @@unique([courtId, courtNumber])
+  @@index([courtId])
+  @@index([lastUpdated])
+  @@map("display_board_cache")
+}
+
 
 // ==================== HEARINGS ====================
 
