@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -39,6 +39,7 @@ export default function NewCourtPage() {
     const router = useRouter()
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+    const [checkingAuth, setCheckingAuth] = useState(true)
 
     const [formData, setFormData] = useState({
         courtName: '',
@@ -48,6 +49,33 @@ export default function NewCourtPage() {
         state: '',
         displayBoardUrl: '',
     })
+
+    // Check super admin status on mount
+    useEffect(() => {
+        checkSuperAdmin()
+    }, [])
+
+    const checkSuperAdmin = async () => {
+        try {
+            const res = await fetch('/api/user/profile')
+            if (res.ok) {
+                const data = await res.json()
+                if (!data.isSuperAdmin) {
+                    setError('Only super administrators can create courts')
+                    setTimeout(() => router.push('/courts'), 2000)
+                }
+            } else {
+                setError('Failed to verify authorization')
+                setTimeout(() => router.push('/courts'), 2000)
+            }
+        } catch (err) {
+            console.error('Error checking super admin status:', err)
+            setError('Failed to verify authorization')
+            setTimeout(() => router.push('/courts'), 2000)
+        } finally {
+            setCheckingAuth(false)
+        }
+    }
 
     const handleChange = (field: string, value: string) => {
         setFormData(prev => ({ ...prev, [field]: value }))
@@ -120,134 +148,141 @@ export default function NewCourtPage() {
                             <CardTitle className="text-lg">Court Information</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            {error && (
+                            {checkingAuth ? (
+                                <div className="flex items-center justify-center py-8">
+                                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                                    <span className="ml-2 text-muted-foreground">Verifying authorization...</span>
+                                </div>
+                            ) : error ? (
                                 <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
                                     {error}
                                 </div>
-                            )}
-
-                            {/* Court Name */}
-                            <div className="space-y-2">
-                                <Label htmlFor="courtName">Court Name *</Label>
-                                <Input
-                                    id="courtName"
-                                    placeholder="e.g., Delhi High Court"
-                                    value={formData.courtName}
-                                    onChange={(e) => handleChange('courtName', e.target.value)}
-                                    required
-                                />
-                            </div>
-
-                            {/* Court Type */}
-                            <div className="space-y-2">
-                                <Label htmlFor="courtType">Court Type *</Label>
-                                <Select
-                                    value={formData.courtType}
-                                    onValueChange={(value) => handleChange('courtType', value)}
-                                >
-                                    <SelectTrigger id="courtType">
-                                        <SelectValue placeholder="Select court type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {courtTypes.map((type) => (
-                                            <SelectItem key={type.value} value={type.value}>
-                                                {type.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            {/* Location Section */}
-                            <div className="pt-4 border-t">
-                                <h3 className="text-sm font-medium mb-4 flex items-center gap-2">
-                                    <MapPin className="w-4 h-4" />
-                                    Location
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            ) : (
+                                <>
+                                    {/* Court Name */}
                                     <div className="space-y-2">
-                                        <Label htmlFor="city">City</Label>
+                                        <Label htmlFor="courtName">Court Name *</Label>
                                         <Input
-                                            id="city"
-                                            placeholder="e.g., New Delhi"
-                                            value={formData.city}
-                                            onChange={(e) => handleChange('city', e.target.value)}
+                                            id="courtName"
+                                            placeholder="e.g., Delhi High Court"
+                                            value={formData.courtName}
+                                            onChange={(e) => handleChange('courtName', e.target.value)}
+                                            required
                                         />
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="state">State</Label>
-                                        <Input
-                                            id="state"
-                                            placeholder="e.g., Delhi"
-                                            value={formData.state}
-                                            onChange={(e) => handleChange('state', e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="space-y-2 mt-4">
-                                    <Label htmlFor="address">Full Address</Label>
-                                    <Textarea
-                                        id="address"
-                                        placeholder="Full court address..."
-                                        value={formData.address}
-                                        onChange={(e) => handleChange('address', e.target.value)}
-                                        rows={2}
-                                    />
-                                </div>
-                            </div>
 
-                            {/* Display Board Section */}
-                            <div className="pt-4 border-t">
-                                <h3 className="text-sm font-medium mb-4 flex items-center gap-2">
-                                    <Monitor className="w-4 h-4" />
-                                    Display Board Integration
-                                </h3>
-                                <div className="space-y-2">
-                                    <Label htmlFor="displayBoardUrl">Display Board URL</Label>
-                                    <div className="flex gap-2">
-                                        <div className="relative flex-1">
-                                            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                            <Input
-                                                id="displayBoardUrl"
-                                                className="pl-10"
-                                                placeholder="https://court.gov.in/display-board"
-                                                value={formData.displayBoardUrl}
-                                                onChange={(e) => handleChange('displayBoardUrl', e.target.value)}
+                                    {/* Court Type */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="courtType">Court Type *</Label>
+                                        <Select
+                                            value={formData.courtType}
+                                            onValueChange={(value) => handleChange('courtType', value)}
+                                        >
+                                            <SelectTrigger id="courtType">
+                                                <SelectValue placeholder="Select court type" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {courtTypes.map((type) => (
+                                                    <SelectItem key={type.value} value={type.value}>
+                                                        {type.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    {/* Location Section */}
+                                    <div className="pt-4 border-t">
+                                        <h3 className="text-sm font-medium mb-4 flex items-center gap-2">
+                                            <MapPin className="w-4 h-4" />
+                                            Location
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="city">City</Label>
+                                                <Input
+                                                    id="city"
+                                                    placeholder="e.g., New Delhi"
+                                                    value={formData.city}
+                                                    onChange={(e) => handleChange('city', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="state">State</Label>
+                                                <Input
+                                                    id="state"
+                                                    placeholder="e.g., Delhi"
+                                                    value={formData.state}
+                                                    onChange={(e) => handleChange('state', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2 mt-4">
+                                            <Label htmlFor="address">Full Address</Label>
+                                            <Textarea
+                                                id="address"
+                                                placeholder="Full court address..."
+                                                value={formData.address}
+                                                onChange={(e) => handleChange('address', e.target.value)}
+                                                rows={2}
                                             />
                                         </div>
                                     </div>
-                                    <p className="text-xs text-muted-foreground">
-                                        Link to the court's online display board showing live case status
-                                        (e.g., https://delhihighcourt.nic.in/app/physical-display-board)
-                                    </p>
-                                </div>
-                            </div>
 
-                            {/* Actions */}
-                            <div className="flex gap-3 pt-4">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="flex-1"
-                                    onClick={() => router.push('/courts')}
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    type="submit"
-                                    className="flex-1"
-                                    disabled={loading}
-                                >
-                                    {loading ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                            Creating...
-                                        </>
-                                    ) : (
-                                        'Create Court'
-                                    )}
-                                </Button>
-                            </div>
+                                    {/* Display Board Section */}
+                                    <div className="pt-4 border-t">
+                                        <h3 className="text-sm font-medium mb-4 flex items-center gap-2">
+                                            <Monitor className="w-4 h-4" />
+                                            Display Board Integration
+                                        </h3>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="displayBoardUrl">Display Board URL</Label>
+                                            <div className="flex gap-2">
+                                                <div className="relative flex-1">
+                                                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                                    <Input
+                                                        id="displayBoardUrl"
+                                                        className="pl-10"
+                                                        placeholder="https://court.gov.in/display-board"
+                                                        value={formData.displayBoardUrl}
+                                                        onChange={(e) => handleChange('displayBoardUrl', e.target.value)}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground">
+                                                Link to the court's online display board showing live case status
+                                                (e.g., https://delhihighcourt.nic.in/app/physical-display-board)
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="flex gap-3 pt-4">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="flex-1"
+                                            onClick={() => router.push('/courts')}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            type="submit"
+                                            className="flex-1"
+                                            disabled={loading}
+                                        >
+                                            {loading ? (
+                                                <>
+                                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                    Creating...
+                                                </>
+                                            ) : (
+                                                'Create Court'
+                                            )}
+                                        </Button>
+                                    </div>
+                                </>
+                            )}
                         </CardContent>
                     </Card>
                 </form>

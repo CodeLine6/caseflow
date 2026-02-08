@@ -145,39 +145,21 @@ export default function DisplayBoardsPage() {
                         <div>
                             <h1 className="text-3xl font-bold flex items-center gap-3">
                                 <Monitor className="w-8 h-8 text-primary" />
-                                Display Board Management
+                                Display Boards
                             </h1>
                             <p className="text-muted-foreground mt-1">
-                                Manage and sync court display board data
+                                View court display board data
                             </p>
                         </div>
                     </div>
-                    <div className="flex gap-2">
-                        <Button
-                            variant="outline"
-                            onClick={fetchCourts}
-                            disabled={loading}
-                        >
-                            <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} />
-                            Refresh
-                        </Button>
-                        <Button
-                            onClick={scrapeAll}
-                            disabled={scrapingAll || courts.length === 0}
-                        >
-                            {scrapingAll ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    Scraping All...
-                                </>
-                            ) : (
-                                <>
-                                    <Play className="w-4 h-4 mr-2" />
-                                    Scrape All Courts
-                                </>
-                            )}
-                        </Button>
-                    </div>
+                    <Button
+                        variant="outline"
+                        onClick={fetchCourts}
+                        disabled={loading}
+                    >
+                        <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} />
+                        Refresh
+                    </Button>
                 </div>
 
                 {/* Last Scrape Results */}
@@ -324,19 +306,7 @@ export default function DisplayBoardsPage() {
                     </div>
                 )}
 
-                {/* Help Section */}
-                <Card className="bg-secondary/20">
-                    <CardContent className="p-5">
-                        <h3 className="font-semibold mb-2">How Display Board Scraping Works</h3>
-                        <ul className="text-sm text-muted-foreground space-y-1">
-                            <li>• Add a display board URL when creating a court (e.g., Delhi HC display board)</li>
-                            <li>• The scraper automatically detects the format based on the court's website</li>
-                            <li>• Click "Sync" to fetch the latest data from a court's display board</li>
-                            <li>• Use "Scrape All" to update all courts at once</li>
-                            <li>• Data is cached and shown on the Cause List page alongside your hearings</li>
-                        </ul>
-                    </CardContent>
-                </Card>
+
             </div>
         </MainLayout>
     )

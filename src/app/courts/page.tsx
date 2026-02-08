@@ -35,10 +35,24 @@ export default function CourtsPage() {
     const [courts, setCourts] = useState<Court[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+    const [isSuperAdmin, setIsSuperAdmin] = useState(false)
 
     useEffect(() => {
         fetchCourts()
+        fetchUserProfile()
     }, [])
+
+    const fetchUserProfile = async () => {
+        try {
+            const res = await fetch('/api/user/profile')
+            if (res.ok) {
+                const data = await res.json()
+                setIsSuperAdmin(data.isSuperAdmin || false)
+            }
+        } catch (err) {
+            console.error('Error fetching user profile:', err)
+        }
+    }
 
     const fetchCourts = async () => {
         try {
@@ -81,12 +95,14 @@ export default function CourtsPage() {
                         <p className="text-muted-foreground mt-1">Manage court information</p>
                     </div>
                 </div>
-                <Link href="/courts/new">
-                    <Button className="gap-2">
-                        <Plus className="w-4 h-4" />
-                        New Court
-                    </Button>
-                </Link>
+                {isSuperAdmin && (
+                    <Link href="/courts/new">
+                        <Button className="gap-2">
+                            <Plus className="w-4 h-4" />
+                            New Court
+                        </Button>
+                    </Link>
+                )}
             </div>
 
             {/* Stats */}

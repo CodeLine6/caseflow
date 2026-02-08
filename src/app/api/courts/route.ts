@@ -25,12 +25,17 @@ export async function GET() {
     }
 }
 
-// POST /api/courts - Create a new court
+// POST /api/courts - Create a new court (Admin only)
 export async function POST(request: Request) {
     try {
-        const session = await getServerSession(authOptions)
-        if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        const { getAdminSession } = await import('@/lib/admin-session')
+        const admin = await getAdminSession()
+
+        if (!admin) {
+            return NextResponse.json(
+                { error: 'Admin authentication required' },
+                { status: 401 }
+            )
         }
 
         const body = await request.json()

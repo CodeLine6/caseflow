@@ -128,3 +128,29 @@ export const PERMISSION_GROUPS = {
     'Invoices': ['invoices.create', 'invoices.read', 'invoices.update', 'invoices.delete'],
     'Workspace': ['workspace.manage', 'workspace.invite', 'workspace.members'],
 } as const
+
+// ==================== SUPER ADMIN ====================
+
+import { prisma } from './prisma'
+
+/**
+ * Check if a user has super admin privileges
+ */
+export async function isSuperAdmin(userId: string): Promise<boolean> {
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { isSuperAdmin: true },
+    })
+    return user?.isSuperAdmin ?? false
+}
+
+/**
+ * Require super admin privileges - throws error if user is not super admin
+ */
+export async function requireSuperAdmin(userId: string): Promise<void> {
+    const isAdmin = await isSuperAdmin(userId)
+    if (!isAdmin) {
+        throw new Error('Super admin privileges required')
+    }
+}
+
