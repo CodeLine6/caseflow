@@ -310,7 +310,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                 <Calendar className="w-5 h-5 text-primary" />
                                 Hearings ({caseData._count.hearings})
                             </CardTitle>
-                            <Button size="sm" variant="outline">
+                            <Button size="sm" variant="outline" onClick={() => router.push(`/hearings/new?caseId=${id}`)}>
                                 <Plus className="w-4 h-4 mr-1" />Add
                             </Button>
                         </CardHeader>
@@ -340,7 +340,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                 <CheckCircle className="w-5 h-5 text-primary" />
                                 Tasks ({caseData._count.tasks})
                             </CardTitle>
-                            <Button size="sm" variant="outline">
+                            <Button size="sm" variant="outline" onClick={() => router.push(`/tasks/new?caseId=${id}`)}>
                                 <Plus className="w-4 h-4 mr-1" />Add
                             </Button>
                         </CardHeader>
@@ -429,7 +429,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                     ))}
                                 </div>
                             )}
-                            <Button size="sm" variant="outline" className="w-full mt-3">
+                            <Button size="sm" variant="outline" className="w-full mt-3" onClick={() => router.push(`/documents/new?caseId=${id}`)}>
                                 <Plus className="w-4 h-4 mr-1" />Upload
                             </Button>
                         </CardContent>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
     Briefcase, ArrowLeft, Save, Calendar, User, Scale,
@@ -40,10 +40,18 @@ const priorities = [
     { value: 'LOW', label: 'Low', color: 'text-green-400' },
 ]
 
+
+interface Court {
+    id: number
+    courtName: string
+    courtType: string
+}
+
 export default function NewCasePage() {
     const router = useRouter()
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+    const [courts, setCourts] = useState<Court[]>([])
 
     const [formData, setFormData] = useState({
         title: '',
@@ -56,7 +64,24 @@ export default function NewCasePage() {
         opposingParty: '',
         opposingCounsel: '',
         caseValue: '',
+        courtId: '',
     })
+
+    // Fetch courts on mount
+    useEffect(() => {
+        const fetchCourts = async () => {
+            try {
+                const res = await fetch('/api/courts')
+                if (res.ok) {
+                    const data = await res.json()
+                    setCourts(data.courts || [])
+                }
+            } catch (err) {
+                console.error('Failed to fetch courts:', err)
+            }
+        }
+        fetchCourts()
+    }, [])
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target
@@ -86,6 +111,7 @@ export default function NewCasePage() {
                     ...formData,
                     workspaceId,
                     caseValue: formData.caseValue ? parseFloat(formData.caseValue) : null,
+                    courtId: formData.courtId ? parseInt(formData.courtId) : null,
                 }),
             })
 
@@ -291,6 +317,23 @@ export default function NewCasePage() {
                                         onChange={handleChange}
                                         required
                                     />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="courtId">Court</Label>
+                                    <select
+                                        id="courtId"
+                                        name="courtId"
+                                        value={formData.courtId}
+                                        onChange={handleChange}
+                                        className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
+                                    >
+                                        <option value="">Select a court...</option>
+                                        {courts.map(court => (
+                                            <option key={court.id} value={court.id}>
+                                                {court.courtName} ({court.courtType})
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="caseValue">Case Value (₹)</Label>

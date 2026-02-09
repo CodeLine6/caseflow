@@ -6,8 +6,11 @@ import { prisma } from '@/lib/prisma'
 // GET /api/courts - List all courts
 export async function GET() {
     try {
+        const { getAdminSession } = await import('@/lib/admin-session')
         const session = await getServerSession(authOptions)
-        if (!session?.user?.id) {
+        const admin = await getAdminSession()
+
+        if (!session?.user?.id && !admin) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 

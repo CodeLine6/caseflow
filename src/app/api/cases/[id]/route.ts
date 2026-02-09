@@ -48,7 +48,7 @@ export async function GET(
                     orderBy: { dueDate: 'asc' },
                     take: 5,
                     include: {
-                        assignee: {
+                        assignedTo: {
                             select: { id: true, name: true, avatar: true },
                         },
                     },

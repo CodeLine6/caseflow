@@ -32,7 +32,7 @@ export default function HearingsPage() {
     const [hearings, setHearings] = useState<Hearing[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
-    const [showUpcoming, setShowUpcoming] = useState(true)
+    const [showUpcoming, setShowUpcoming] = useState(false)
 
     useEffect(() => {
         fetchHearings()

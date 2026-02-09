@@ -28,26 +28,26 @@ interface DisplayBoardEntry {
     judgeName: string | null
     lastUpdated?: string
     court?: {
-        id: string
+        id: number
         courtName: string
         displayBoardUrl: string | null
     }
 }
 
 interface UserHearing {
-    courtId: string
+    courtId: number | null
     courtNumber: string
     caseNumber: string
     caseTitle: string
     court: {
-        id: string
+        id: number
         courtName: string
         displayBoardUrl: string | null
     } | null
 }
 
 interface DisplayUpdateEvent {
-    courtId: string
+    courtId: number
     courtName: string
     entries: DisplayBoardEntry[]
     timestamp: string
@@ -171,9 +171,9 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
     }
 
     // Check if user has a matching hearing
-    const isUserHearing = (entry: DisplayBoardEntry, courtId: string) => {
+    const isUserCourtRoom = (entry: DisplayBoardEntry, courtId: string) => {
         return userHearings.some(
-            h => h.courtId === courtId && h.courtNumber === entry.courtNumber
+            h => h.courtId === Number(courtId) && h.courtNumber === entry.courtNumber
         )
     }
 
@@ -270,7 +270,6 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
                                             Court #{hearing.courtNumber} • {hearing.caseNumber}
                                         </p>
                                     </div>
-                                    <Badge variant="outline">Awaiting Data</Badge>
                                 </div>
                                 {hearing.court?.displayBoardUrl && (
                                     <a
@@ -289,20 +288,20 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
                 ) : (
                     <div className="space-y-4">
                         {allEntries.map((entry, idx) => {
-                            const isMyHearing = isUserHearing(entry, entry._courtId)
+                            const isMyCourtRoom = isUserCourtRoom(entry, entry._courtId)
                             return (
                                 <div
                                     key={`${entry._courtId}-${entry.courtNumber}-${idx}`}
                                     className={cn(
                                         'p-4 rounded-lg border transition-all',
-                                        isMyHearing
+                                        isMyCourtRoom
                                             ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
                                             : 'border-border bg-secondary/20'
                                     )}
                                 >
                                     <div className="flex items-start justify-between">
                                         <div className="space-y-1">
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                                 <Badge variant="secondary" className="font-mono">
                                                     Court #{entry.courtNumber}
                                                 </Badge>
@@ -312,9 +311,9 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
                                                         Item {entry.itemNumber}
                                                     </Badge>
                                                 )}
-                                                {isMyHearing && (
+                                                {isMyCourtRoom && (
                                                     <Badge className="bg-primary text-primary-foreground">
-                                                        Your Case
+                                                        Your Court Room
                                                     </Badge>
                                                 )}
                                             </div>

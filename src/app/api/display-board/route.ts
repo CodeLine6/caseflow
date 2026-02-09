@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
         if (courtId) {
             const displayData = await prisma.displayBoardCache.findMany({
                 where: {
-                    courtId,
+                    courtId: parseInt(courtId),
                     ...(courtNumber ? { courtNumber } : {}),
                 },
                 include: {
@@ -80,21 +80,19 @@ export async function GET(request: NextRequest) {
         })
 
         // Get unique court IDs and court numbers from today's hearings
-        const courtInfo = todayHearings
-            .filter(h => h.case.courtId)
-            .map(h => ({
-                courtId: h.case.courtId!,
-                courtNumber: h.courtNumber,
-                caseNumber: h.case.caseNumber,
-                caseTitle: h.case.title,
-                court: h.case.court,
-            }))
+        const courtInfo = todayHearings.map(h => ({
+            courtId: h.case.courtId,
+            courtNumber: h.courtNumber,
+            caseNumber: h.case.caseNumber,
+            caseTitle: h.case.title,
+            court: h.case.court,
+        }))
 
         // Get display board data for relevant courts
-        const courtIds = [...new Set(courtInfo.map(c => c.courtId))]
+        const validCourtIds = [...new Set(courtInfo.map(c => c.courtId).filter((id): id is number => id !== null))]
         const displayData = await prisma.displayBoardCache.findMany({
             where: {
-                courtId: { in: courtIds },
+                courtId: { in: validCourtIds },
             },
             include: {
                 court: {
@@ -117,7 +115,7 @@ export async function GET(request: NextRequest) {
         )
 
         return NextResponse.json({
-            displayData: relevantDisplayData,
+            displayData,
             userHearings: courtInfo,
             allCourtData: displayData,
         })
@@ -181,7 +179,7 @@ export async function POST(request: NextRequest) {
                         caseTitle: entry.caseTitle || null,
                         status: entry.status || null,
                         judgeName: entry.judgeName || null,
-                        rawData: entry.rawData || null,
+                        rawData: (entry.rawData || null) as any,
                         lastUpdated: new Date(),
                     },
                     create: {
@@ -192,7 +190,7 @@ export async function POST(request: NextRequest) {
                         caseTitle: entry.caseTitle || null,
                         status: entry.status || null,
                         judgeName: entry.judgeName || null,
-                        rawData: entry.rawData || null,
+                        rawData: (entry.rawData || null) as any,
                     },
                 })
             })

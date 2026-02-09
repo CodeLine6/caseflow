@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
     Calendar, Clock, Scale, Briefcase,
     Loader2, AlertCircle, ArrowLeft, Save
@@ -25,6 +25,9 @@ type Court = {
 
 export default function NewHearingPage() {
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const caseIdParam = searchParams.get('caseId')
+
     const [loading, setLoading] = useState(false)
     const [loadingCases, setLoadingCases] = useState(true)
     const [loadingCourts, setLoadingCourts] = useState(true)
@@ -33,11 +36,11 @@ export default function NewHearingPage() {
     const [courts, setCourts] = useState<Court[]>([])
 
     const [formData, setFormData] = useState({
-        caseId: '',
+        caseId: caseIdParam || '',
         hearingDate: '',
         hearingTime: '',
         purpose: '',
-        hearingType: 'MAIN_HEARING',
+        hearingType: 'OTHER',
         courtId: '',
         courtNumber: '',
         notes: '',
@@ -251,11 +254,12 @@ export default function NewHearingPage() {
                                     onChange={(e) => handleChange('hearingType', e.target.value)}
                                     className="w-full p-3 border rounded-lg bg-background"
                                 >
-                                    <option value="MAIN_HEARING">Main Hearing</option>
                                     <option value="PRELIMINARY">Preliminary</option>
-                                    <option value="ARGUMENTS">Arguments</option>
+                                    <option value="ARGUMENT">Arguments</option>
                                     <option value="EVIDENCE">Evidence</option>
-                                    <option value="JUDGMENT">Judgment</option>
+                                    <option value="FINAL">Final Hearing</option>
+                                    <option value="INTERIM">Interim Application</option>
+                                    <option value="MOTION">Motion</option>
                                     <option value="OTHER">Other</option>
                                 </select>
                             </div>
