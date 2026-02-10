@@ -139,7 +139,7 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
             setDisplayData(prev => ({
                 ...prev,
                 [data.courtId]: data.entries.filter(d =>
-                    userHearings.some(c => c.courtNumber === d.courtNumber)
+                    userHearings.some(c => c.courtId == data.courtId && c.courtNumber === d.courtNumber)
                 ).map(e => ({
                     ...e,
                     lastUpdated: data.timestamp,
