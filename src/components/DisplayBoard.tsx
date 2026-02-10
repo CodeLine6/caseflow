@@ -103,11 +103,11 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
         }
     }, [])
 
-    // Connect to Socket.io for real-time updates
     useEffect(() => {
         fetchDisplayBoard()
     }, [fetchDisplayBoard])
 
+    // Connect to Socket.io for real-time updates
     useEffect(() => {
         if (userHearings.length === 0) return
 
@@ -138,7 +138,9 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
             console.log('Received display update:', data.courtId)
             setDisplayData(prev => ({
                 ...prev,
-                [data.courtId]: data.entries.map(e => ({
+                [data.courtId]: data.entries.filter(d =>
+                    userHearings.some(c => c.courtNumber === d.courtNumber)
+                ).map(e => ({
                     ...e,
                     lastUpdated: data.timestamp,
                     court: {

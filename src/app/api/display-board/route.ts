@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
         )
 
         return NextResponse.json({
-            displayData,
+            displayData: relevantDisplayData,
             userHearings: courtInfo,
             allCourtData: displayData,
         })
