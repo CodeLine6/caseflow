@@ -47,11 +47,18 @@ interface Court {
     courtType: string
 }
 
+interface ClientOption {
+    id: string
+    name: string
+    clientType: string
+}
+
 export default function NewCasePage() {
     const router = useRouter()
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
     const [courts, setCourts] = useState<Court[]>([])
+    const [clients, setClients] = useState<ClientOption[]>([])
 
     const [formData, setFormData] = useState({
         title: '',
@@ -65,9 +72,10 @@ export default function NewCasePage() {
         opposingCounsel: '',
         caseValue: '',
         courtId: '',
+        clientId: '',
     })
 
-    // Fetch courts on mount
+    // Fetch courts and clients on mount
     useEffect(() => {
         const fetchCourts = async () => {
             try {
@@ -80,7 +88,19 @@ export default function NewCasePage() {
                 console.error('Failed to fetch courts:', err)
             }
         }
+        const fetchClients = async () => {
+            try {
+                const res = await fetch('/api/clients')
+                if (res.ok) {
+                    const data = await res.json()
+                    setClients(data.clients || [])
+                }
+            } catch (err) {
+                console.error('Failed to fetch clients:', err)
+            }
+        }
         fetchCourts()
+        fetchClients()
     }, [])
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -112,6 +132,7 @@ export default function NewCasePage() {
                     workspaceId,
                     caseValue: formData.caseValue ? parseFloat(formData.caseValue) : null,
                     courtId: formData.courtId ? parseInt(formData.courtId) : null,
+                    clientId: formData.clientId || null,
                 }),
             })
 
@@ -331,6 +352,23 @@ export default function NewCasePage() {
                                         {courts.map(court => (
                                             <option key={court.id} value={court.id}>
                                                 {court.courtName} ({court.courtType})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="clientId">Client</Label>
+                                    <select
+                                        id="clientId"
+                                        name="clientId"
+                                        value={formData.clientId}
+                                        onChange={handleChange}
+                                        className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
+                                    >
+                                        <option value="">Select a client...</option>
+                                        {clients.map(client => (
+                                            <option key={client.id} value={client.id}>
+                                                {client.name} ({client.clientType})
                                             </option>
                                         ))}
                                     </select>

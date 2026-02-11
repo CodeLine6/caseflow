@@ -38,7 +38,18 @@ export async function GET(
                 },
                 hearings: {
                     orderBy: { hearingDate: 'asc' },
-                    take: 5,
+                    include: {
+                        hearingCounsel: {
+                            select: { id: true, role: true, user: { select: { name: true } } }
+                        },
+                        attendance: {
+                            select: {
+                                memberId: true,
+                                attended: true,
+                                member: { select: { role: true, user: { select: { name: true } } } }
+                            }
+                        },
+                    },
                 },
                 documents: {
                     orderBy: { createdAt: 'desc' },

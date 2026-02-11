@@ -34,7 +34,17 @@ export async function GET(request: Request) {
         const hearings = await prisma.hearing.findMany({
             where: whereClause,
             include: {
-                case: { select: { id: true, title: true, caseNumber: true } },
+                case: { select: { id: true, title: true, caseNumber: true, court: { select: { courtName: true } } } },
+                hearingCounsel: {
+                    select: { id: true, userId: true, role: true, user: { select: { name: true } } }
+                },
+                attendance: {
+                    select: {
+                        memberId: true,
+                        attended: true,
+                        member: { select: { userId: true, role: true, user: { select: { name: true } } } }
+                    }
+                },
             },
             orderBy: { hearingDate: 'asc' },
         })
@@ -43,7 +53,6 @@ export async function GET(request: Request) {
         const mappedHearings = hearings.map(h => ({
             ...h,
             purpose: h.description || h.hearingType,
-            court: null, // Court info would need a join through case
         }))
 
         return NextResponse.json({ hearings: mappedHearings })
@@ -62,7 +71,23 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json()
-        const { caseId, hearingDate, purpose, hearingType, courtNumber, notes, status } = body
+        const {
+            caseId,
+            hearingDate,
+            hearingTime,
+            purpose,
+            hearingType,
+            courtNumber,
+            courtItemNumber,
+            judgeName,
+            notes,
+            status,
+            hearingCounselId,
+            accompaniedByIds,
+            nextDateOfHearing,
+            orderLink,
+            additionalRemarks,
+        } = body
 
         if (!caseId || !hearingDate) {
             return NextResponse.json({ error: 'Case ID and hearing date are required' }, { status: 400 })
@@ -90,15 +115,59 @@ export async function POST(request: Request) {
             data: {
                 caseId,
                 hearingDate: new Date(hearingDate),
+                hearingTime: hearingTime || null,
                 hearingType: (hearingType as HearingType) || 'OTHER',
                 description: purpose,
                 courtNumber: courtNumber || 'TBD',
-                notes,
+                courtItemNumber: courtItemNumber || null,
+                judgeName: judgeName || null,
+                notes: notes || null,
                 status: status || 'SCHEDULED',
                 createdById: session.user.id,
+                hearingCounselId: hearingCounselId || null,
+                orderLink: orderLink || null,
+                additionalRemarks: additionalRemarks || null,
+                // Create attendance records for accompanied members
+                attendance: {
+                    create: accompaniedByIds?.map((memberId: string) => ({
+                        memberId,
+                        attended: false,
+                    })) || [],
+                },
             },
-            include: { case: true },
+            include: {
+                case: { select: { id: true, caseNumber: true, title: true } },
+                hearingCounsel: {
+                    select: { id: true, user: { select: { name: true } } }
+                },
+                attendance: {
+                    select: {
+                        id: true,
+                        memberId: true,
+                        attended: true,
+                        member: { select: { user: { select: { name: true } } } }
+                    }
+                },
+            },
         })
+
+        // Auto-create follow-up hearing if nextDateOfHearing is provided
+        if (nextDateOfHearing) {
+            await prisma.hearing.create({
+                data: {
+                    caseId,
+                    hearingDate: new Date(nextDateOfHearing),
+                    hearingTime: hearing.hearingTime,
+                    hearingType: hearing.hearingType,
+                    judgeName: hearing.judgeName,
+                    courtNumber: hearing.courtNumber,
+                    courtItemNumber: hearing.courtItemNumber,
+                    notes: `Auto-generated follow-up hearing from hearing ${hearing.id}`,
+                    createdById: session.user.id,
+                    hearingCounselId: hearing.hearingCounselId,
+                },
+            })
+        }
 
         return NextResponse.json(hearing, { status: 201 })
     } catch (error) {

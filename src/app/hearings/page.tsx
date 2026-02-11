@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-    Calendar, Plus, Clock, Scale, Briefcase,
-    Loader2, AlertCircle, CheckCircle, ArrowLeft
+    Calendar, Plus, Clock, Scale, Briefcase, Gavel, User,
+    Loader2, AlertCircle, CheckCircle, ArrowLeft, Users
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,18 +13,51 @@ import { Badge } from '@/components/ui/badge'
 type Hearing = {
     id: string
     hearingDate: string
+    hearingTime: string | null
+    hearingType: string
     purpose: string
+    description: string | null
     status: string
+    courtNumber: string
+    courtItemNumber: string | null
+    judgeName: string | null
     notes: string | null
-    case: { id: string; title: string; caseNumber: string }
-    court: { id: string; courtName: string } | null
+    outcome: string | null
+    orderLink: string | null
+    additionalRemarks: string | null
+    case: {
+        id: string
+        title: string
+        caseNumber: string
+        court?: { courtName: string } | null
+    }
+    hearingCounsel?: {
+        id: string
+        user: { name: string }
+        role: string
+    } | null
+    attendance?: Array<{
+        memberId: string
+        attended: boolean
+        member: { user: { name: string }; role: string }
+    }>
 }
 
 const statusColors: Record<string, string> = {
     SCHEDULED: 'bg-blue-500/10 text-blue-400',
     COMPLETED: 'bg-green-500/10 text-green-400',
     ADJOURNED: 'bg-amber-500/10 text-amber-400',
+    POSTPONED: 'bg-amber-500/10 text-amber-400',
     CANCELLED: 'bg-red-500/10 text-red-400',
+}
+
+const typeLabels: Record<string, string> = {
+    PRELIMINARY: 'Preliminary',
+    EVIDENCE: 'Evidence',
+    ARGUMENT: 'Argument',
+    FINAL: 'Final',
+    INTERIM: 'Interim',
+    OTHER: 'Other',
 }
 
 export default function HearingsPage() {
@@ -98,7 +131,7 @@ export default function HearingsPage() {
                     </Button>
                     <div>
                         <h1 className="text-3xl font-bold flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+                            <div className="w-10 h-10 rounded-xl bg-linear-to-br from-primary to-accent flex items-center justify-center">
                                 <Calendar className="w-5 h-5 text-white" />
                             </div>
                             Hearings
@@ -120,6 +153,13 @@ export default function HearingsPage() {
                         size="sm"
                     >
                         All
+                    </Button>
+                    <Button
+                        onClick={() => router.push('/hearings/new')}
+                        size="sm"
+                    >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Schedule Hearing
                     </Button>
                 </div>
             </div>
@@ -172,8 +212,8 @@ export default function HearingsPage() {
                                 <AlertCircle className="w-5 h-5 text-amber-400" />
                             </div>
                             <div>
-                                <p className="text-2xl font-bold">{hearings.filter(h => h.status === 'ADJOURNED').length}</p>
-                                <p className="text-xs text-muted-foreground">Adjourned</p>
+                                <p className="text-2xl font-bold">{hearings.filter(h => h.status === 'ADJOURNED' || h.status === 'POSTPONED').length}</p>
+                                <p className="text-xs text-muted-foreground">Adjourned / Postponed</p>
                             </div>
                         </div>
                     </CardContent>
@@ -196,9 +236,13 @@ export default function HearingsPage() {
                     <CardContent className="p-12 text-center">
                         <Calendar className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-50" />
                         <h3 className="text-xl font-semibold mb-2">No hearings found</h3>
-                        <p className="text-muted-foreground">
+                        <p className="text-muted-foreground mb-4">
                             {showUpcoming ? 'No upcoming hearings scheduled.' : 'No hearings recorded yet.'}
                         </p>
+                        <Button onClick={() => router.push('/hearings/new')}>
+                            <Plus className="w-4 h-4 mr-1" />
+                            Schedule First Hearing
+                        </Button>
                     </CardContent>
                 </Card>
             ) : (
@@ -219,20 +263,65 @@ export default function HearingsPage() {
                                         <CardContent className="p-4">
                                             <div className="flex items-start justify-between gap-4">
                                                 <div className="flex items-start gap-4">
-                                                    <div className="w-16 text-center">
-                                                        <p className="text-lg font-bold text-primary">{formatTime(hearing.hearingDate)}</p>
+                                                    <div className="w-16 text-center flex-shrink-0">
+                                                        <p className="text-lg font-bold text-primary">
+                                                            {hearing.hearingTime || formatTime(hearing.hearingDate)}
+                                                        </p>
+                                                        <Badge variant="outline" className="text-[10px] mt-1">
+                                                            {typeLabels[hearing.hearingType] || hearing.hearingType}
+                                                        </Badge>
                                                     </div>
-                                                    <div>
-                                                        <h4 className="font-semibold">{hearing.purpose}</h4>
-                                                        <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                                                            <Briefcase className="w-4 h-4" />
+                                                    <div className="space-y-1">
+                                                        <h4 className="font-semibold">{hearing.purpose || hearing.description || `${hearing.hearingType} Hearing`}</h4>
+                                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                            <Briefcase className="w-4 h-4 flex-shrink-0" />
                                                             <span>{hearing.case.caseNumber} - {hearing.case.title}</span>
                                                         </div>
-                                                        {hearing.court && (
-                                                            <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                                                                <Scale className="w-4 h-4" />
-                                                                <span>{hearing.court.courtName}</span>
+                                                        {hearing.case.court && (
+                                                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                <Scale className="w-4 h-4 flex-shrink-0" />
+                                                                <span>{hearing.case.court.courtName}</span>
+                                                                {hearing.courtNumber && (
+                                                                    <span className="text-xs">• Court {hearing.courtNumber}</span>
+                                                                )}
+                                                                {hearing.courtItemNumber && (
+                                                                    <span className="text-xs">• Item {hearing.courtItemNumber}</span>
+                                                                )}
                                                             </div>
+                                                        )}
+                                                        {!hearing.case.court && hearing.courtNumber && (
+                                                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                <Scale className="w-4 h-4 flex-shrink-0" />
+                                                                <span>Court {hearing.courtNumber}</span>
+                                                                {hearing.courtItemNumber && (
+                                                                    <span className="text-xs">• Item {hearing.courtItemNumber}</span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        <div className="flex flex-wrap gap-3 mt-1">
+                                                            {hearing.judgeName && (
+                                                                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                                                    <Gavel className="w-3.5 h-3.5 flex-shrink-0" />
+                                                                    <span>{hearing.judgeName}</span>
+                                                                </div>
+                                                            )}
+                                                            {hearing.hearingCounsel && (
+                                                                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                                                    <User className="w-3.5 h-3.5 flex-shrink-0" />
+                                                                    <span>{hearing.hearingCounsel.user.name}</span>
+                                                                </div>
+                                                            )}
+                                                            {hearing.attendance && hearing.attendance.length > 0 && (
+                                                                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                                                    <Users className="w-3.5 h-3.5 flex-shrink-0" />
+                                                                    <span>{hearing.attendance.length} attending</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        {hearing.outcome && (
+                                                            <p className="text-xs text-green-400 mt-1">
+                                                                Outcome: {hearing.outcome}
+                                                            </p>
                                                         )}
                                                     </div>
                                                 </div>

@@ -5,13 +5,15 @@ import { useRouter } from 'next/navigation'
 import {
     Briefcase, ArrowLeft, Edit, Trash2, Calendar, Users,
     Scale, FileText, Clock, CheckCircle, AlertCircle,
-    Plus, Loader2, Save, X
+    Plus, Loader2, Save, X, User, Link as LinkIcon, ExternalLink
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { MultiSelect } from '@/components/ui/multi-select'
 
 type CaseData = {
     id: string
@@ -26,13 +28,46 @@ type CaseData = {
     opposingParty: string | null
     opposingCounsel: string | null
     caseValue: number | null
+    clientId: string | null
     client: { id: string; name: string } | null
     mainCounsel: { id: string; name: string; avatar: string | null } | null
     court: { id: string; courtName: string; courtType: string } | null
-    hearings: Array<{ id: string; hearingDate: string; purpose: string; status: string }>
+    workspaceId: string
+    hearings: HearingData[]
     documents: Array<{ id: string; fileName: string; createdAt: string }>
     tasks: Array<{ id: string; title: string; status: string; dueDate: string | null }>
     _count: { hearings: number; documents: number; tasks: number }
+}
+
+type HearingData = {
+    id: string
+    hearingDate: string
+    hearingTime: string | null
+    hearingType: string
+    status: string
+    description: string | null
+    judgeName: string | null
+    courtNumber: string
+    courtItemNumber: string | null
+    notes: string | null
+    outcome: string | null
+    orderLink: string | null
+    additionalRemarks: string | null
+    hearingCounselId: string | null
+    hearingCounsel: { id: string; role: string; user: { name: string } } | null
+    attendance: Array<{ memberId: string; attended: boolean; member: { role: string; user: { name: string } } }>
+}
+
+type WorkspaceMember = {
+    id: string
+    role: string
+    user: { id: string; name: string; email: string }
+}
+
+interface ClientOption {
+    id: string
+    name: string
+    clientType: string
 }
 
 const statusConfig: Record<string, { label: string; color: string }> = {
@@ -60,6 +95,9 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     const [editData, setEditData] = useState<Partial<CaseData>>({})
     const [saving, setSaving] = useState(false)
     const [deleting, setDeleting] = useState(false)
+    const [clients, setClients] = useState<ClientOption[]>([])
+    const [editingHearing, setEditingHearing] = useState<HearingData | null>(null)
+    const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMember[]>([])
 
     useEffect(() => {
         fetchCase()
@@ -90,7 +128,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             const res = await fetch(`/api/cases/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(editData),
+                body: JSON.stringify({
+                    ...editData,
+                    clientId: editData.clientId || null,
+                }),
             })
 
             if (!res.ok) {
@@ -129,12 +170,57 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         }
     }
 
+    const fetchWorkspaceMembers = async (workspaceId: string) => {
+        try {
+            const res = await fetch(`/api/workspaces/${workspaceId}/members`)
+            if (res.ok) {
+                const data = await res.json()
+                const filtered = (data.members || []).filter(
+                    (m: WorkspaceMember) => m.role === 'MEMBER' || m.role === 'INTERN' || m.role === 'ADMIN'
+                )
+                setWorkspaceMembers(filtered)
+            }
+        } catch (err) {
+            console.error('Failed to fetch workspace members:', err)
+        }
+    }
+
+    const handleEditHearing = (hearing: HearingData) => {
+        if (caseData?.workspaceId) {
+            fetchWorkspaceMembers(caseData.workspaceId)
+        }
+        setEditingHearing(hearing)
+    }
+
+    const handleDeleteHearing = async (hearingId: string) => {
+        if (!confirm('Are you sure you want to delete this hearing?')) return
+        try {
+            const res = await fetch(`/api/hearings/${hearingId}`, { method: 'DELETE' })
+            if (res.ok) {
+                fetchCase()
+            } else {
+                const data = await res.json()
+                setError(data.error || 'Failed to delete hearing')
+            }
+        } catch (err) {
+            setError('Failed to delete hearing')
+        }
+    }
+
     const formatDate = (date: string) => {
         return new Date(date).toLocaleDateString('en-IN', {
             day: '2-digit',
             month: 'short',
             year: 'numeric',
         })
+    }
+
+    const hearingStatusColors: Record<string, string> = {
+        SCHEDULED: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+        COMPLETED: 'bg-green-500/10 text-green-400 border-green-500/20',
+        ADJOURNED: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+        POSTPONED: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+        CANCELLED: 'bg-red-500/10 text-red-400 border-red-500/20',
     }
 
     if (loading) {
@@ -205,7 +291,12 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                         </>
                     ) : (
                         <>
-                            <Button variant="outline" onClick={() => setIsEditing(true)}>
+                            <Button variant="outline" onClick={() => {
+                                setIsEditing(true)
+                                fetch('/api/clients').then(res => res.json()).then(data => {
+                                    setClients(data.clients || [])
+                                }).catch(err => console.error('Failed to fetch clients:', err))
+                            }}>
                                 <Edit className="w-4 h-4 mr-2" />Edit
                             </Button>
                             <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
@@ -318,14 +409,87 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                             {caseData.hearings.length === 0 ? (
                                 <p className="text-muted-foreground text-sm">No hearings scheduled</p>
                             ) : (
-                                <div className="space-y-2">
+                                <div className="space-y-3">
                                     {caseData.hearings.map(h => (
-                                        <div key={h.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
-                                            <div>
-                                                <p className="font-medium">{h.purpose}</p>
-                                                <p className="text-sm text-muted-foreground">{formatDate(h.hearingDate)}</p>
+                                        <div key={h.id} className="p-4 rounded-lg bg-secondary/50 border border-border/50">
+                                            <div className="flex items-start justify-between mb-2">
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <p className="font-medium">{h.description || h.hearingType}</p>
+                                                        <Badge className={hearingStatusColors[h.status] || 'bg-slate-500/10 text-slate-400'}>
+                                                            {h.status}
+                                                        </Badge>
+                                                    </div>
+                                                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                                        <span className="flex items-center gap-1">
+                                                            <Calendar className="w-3.5 h-3.5" />
+                                                            {formatDate(h.hearingDate)}
+                                                        </span>
+                                                        {h.hearingTime && (
+                                                            <span className="flex items-center gap-1">
+                                                                <Clock className="w-3.5 h-3.5" />
+                                                                {h.hearingTime}
+                                                            </span>
+                                                        )}
+                                                        {h.courtNumber && (
+                                                            <span className="flex items-center gap-1">
+                                                                <Scale className="w-3.5 h-3.5" />
+                                                                Court {h.courtNumber}
+                                                                {h.courtItemNumber && ` / Item ${h.courtItemNumber}`}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-1">
+                                                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEditHearing(h)}>
+                                                        <Edit className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDeleteHearing(h.id)}>
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                </div>
                                             </div>
-                                            <Badge variant="outline">{h.status}</Badge>
+                                            {/* Extra details */}
+                                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
+                                                {h.judgeName && (
+                                                    <div className="flex items-center gap-1">
+                                                        <User className="w-3.5 h-3.5 text-muted-foreground" />
+                                                        <span className="text-muted-foreground">Judge:</span>
+                                                        <span>{h.judgeName}</span>
+                                                    </div>
+                                                )}
+                                                {h.hearingCounsel && (
+                                                    <div className="flex items-center gap-1">
+                                                        <User className="w-3.5 h-3.5 text-muted-foreground" />
+                                                        <span className="text-muted-foreground">Counsel:</span>
+                                                        <span>{h.hearingCounsel.user.name}</span>
+                                                    </div>
+                                                )}
+                                                {h.attendance.length > 0 && (
+                                                    <div className="flex items-center gap-1 col-span-2">
+                                                        <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                                                        <span className="text-muted-foreground">Accompanied:</span>
+                                                        <span>{h.attendance.map(a => a.member.user.name).join(', ')}</span>
+                                                    </div>
+                                                )}
+                                                {h.outcome && (
+                                                    <div className="col-span-2">
+                                                        <span className="text-muted-foreground">Outcome:</span>
+                                                        <span className="ml-1">{h.outcome}</span>
+                                                    </div>
+                                                )}
+                                                {h.orderLink && (
+                                                    <div className="col-span-2">
+                                                        <a href={h.orderLink} target="_blank" rel="noopener noreferrer" className="text-primary flex items-center gap-1 hover:underline">
+                                                            <ExternalLink className="w-3.5 h-3.5" />
+                                                            View Order
+                                                        </a>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {h.notes && (
+                                                <p className="text-sm text-muted-foreground mt-2 italic">{h.notes}</p>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -374,23 +538,64 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {caseData.client && (
-                                <div>
-                                    <p className="text-xs text-muted-foreground uppercase">Client</p>
-                                    <p className="font-medium">{caseData.client.name}</p>
-                                </div>
-                            )}
-                            {caseData.opposingParty && (
-                                <div>
-                                    <p className="text-xs text-muted-foreground uppercase">Opposing Party</p>
-                                    <p className="font-medium">{caseData.opposingParty}</p>
-                                </div>
-                            )}
-                            {caseData.opposingCounsel && (
-                                <div>
-                                    <p className="text-xs text-muted-foreground uppercase">Opposing Counsel</p>
-                                    <p className="font-medium">{caseData.opposingCounsel}</p>
-                                </div>
+                            {isEditing ? (
+                                <>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs text-muted-foreground uppercase">Client</Label>
+                                        <select
+                                            value={editData.clientId || ''}
+                                            onChange={(e) => setEditData({ ...editData, clientId: e.target.value || null })}
+                                            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
+                                        >
+                                            <option value="">No client selected</option>
+                                            {clients.map(client => (
+                                                <option key={client.id} value={client.id}>
+                                                    {client.name} ({client.clientType})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs text-muted-foreground uppercase">Opposing Party</Label>
+                                        <Input
+                                            value={editData.opposingParty || ''}
+                                            onChange={(e) => setEditData({ ...editData, opposingParty: e.target.value })}
+                                            placeholder="Opposing party name"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs text-muted-foreground uppercase">Opposing Counsel</Label>
+                                        <Input
+                                            value={editData.opposingCounsel || ''}
+                                            onChange={(e) => setEditData({ ...editData, opposingCounsel: e.target.value })}
+                                            placeholder="Opposing counsel name"
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    {caseData.client && (
+                                        <div>
+                                            <p className="text-xs text-muted-foreground uppercase">Client</p>
+                                            <p className="font-medium">{caseData.client.name}</p>
+                                        </div>
+                                    )}
+                                    {caseData.opposingParty && (
+                                        <div>
+                                            <p className="text-xs text-muted-foreground uppercase">Opposing Party</p>
+                                            <p className="font-medium">{caseData.opposingParty}</p>
+                                        </div>
+                                    )}
+                                    {caseData.opposingCounsel && (
+                                        <div>
+                                            <p className="text-xs text-muted-foreground uppercase">Opposing Counsel</p>
+                                            <p className="font-medium">{caseData.opposingCounsel}</p>
+                                        </div>
+                                    )}
+                                    {!caseData.client && !caseData.opposingParty && !caseData.opposingCounsel && (
+                                        <p className="text-muted-foreground text-sm">No parties assigned</p>
+                                    )}
+                                </>
                             )}
                         </CardContent>
                     </Card>
@@ -435,6 +640,278 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                         </CardContent>
                     </Card>
                 </div>
+            </div>
+
+            {/* Edit Hearing Modal */}
+            {editingHearing && (
+                <EditHearingModal
+                    hearing={editingHearing}
+                    members={workspaceMembers}
+                    onClose={() => setEditingHearing(null)}
+                    onSuccess={() => {
+                        setEditingHearing(null)
+                        fetchCase()
+                    }}
+                />
+            )}
+        </div>
+    )
+}
+
+// ======================== EditHearingModal ========================
+
+function EditHearingModal({
+    hearing,
+    members,
+    onClose,
+    onSuccess,
+}: {
+    hearing: HearingData
+    members: WorkspaceMember[]
+    onClose: () => void
+    onSuccess: () => void
+}) {
+    const [formData, setFormData] = useState({
+        hearingDate: hearing.hearingDate ? new Date(hearing.hearingDate).toISOString().split('T')[0] : '',
+        hearingTime: hearing.hearingTime || '',
+        hearingType: hearing.hearingType || 'OTHER',
+        status: hearing.status || 'SCHEDULED',
+        judgeName: hearing.judgeName || '',
+        courtNumber: hearing.courtNumber || '',
+        courtItemNumber: hearing.courtItemNumber || '',
+        hearingCounselId: hearing.hearingCounselId || '',
+        accompaniedByIds: hearing.attendance?.map(a => a.memberId) || [],
+        notes: hearing.notes || '',
+        outcome: hearing.outcome || '',
+        orderLink: hearing.orderLink || '',
+        additionalRemarks: hearing.additionalRemarks || '',
+        nextDateOfHearing: '',
+    })
+    const [isLoading, setIsLoading] = useState(false)
+    const [error, setError] = useState('')
+
+    const memberOptions = members.map(m => ({
+        label: `${m.user.name}${m.role === 'INTERN' ? ' (Intern)' : ''}`,
+        value: m.id,
+        role: m.role,
+    }))
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setIsLoading(true)
+        setError('')
+
+        try {
+            const res = await fetch(`/api/hearings/${hearing.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...formData,
+                    hearingDate: new Date(
+                        `${formData.hearingDate}T${formData.hearingTime || '00:00'}`
+                    ).toISOString(),
+                    hearingCounselId: formData.hearingCounselId || null,
+                    accompaniedByIds: formData.accompaniedByIds,
+                    nextDateOfHearing: formData.nextDateOfHearing || null,
+                }),
+            })
+
+            if (res.ok) {
+                onSuccess()
+            } else {
+                const data = await res.json()
+                setError(data.error || 'Failed to update hearing')
+            }
+        } catch (err) {
+            setError('Failed to update hearing')
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-background rounded-xl border border-border shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between p-6 border-b border-border">
+                    <h3 className="text-xl font-semibold">Edit Hearing</h3>
+                    <Button variant="ghost" size="icon" onClick={onClose}>
+                        <X className="w-4 h-4" />
+                    </Button>
+                </div>
+
+                {error && (
+                    <div className="mx-6 mt-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4" />
+                        {error}
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Date & Time */}
+                        <div className="space-y-2">
+                            <Label>Hearing Date *</Label>
+                            <Input
+                                type="date"
+                                value={formData.hearingDate}
+                                onChange={(e) => setFormData({ ...formData, hearingDate: e.target.value })}
+                                required
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Time</Label>
+                            <Input
+                                type="time"
+                                value={formData.hearingTime}
+                                onChange={(e) => setFormData({ ...formData, hearingTime: e.target.value })}
+                            />
+                        </div>
+
+                        {/* Type & Status */}
+                        <div className="space-y-2">
+                            <Label>Hearing Type</Label>
+                            <select
+                                value={formData.hearingType}
+                                onChange={(e) => setFormData({ ...formData, hearingType: e.target.value })}
+                                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
+                            >
+                                <option value="PRELIMINARY">Preliminary</option>
+                                <option value="EVIDENCE">Evidence</option>
+                                <option value="ARGUMENT">Argument</option>
+                                <option value="FINAL">Final</option>
+                                <option value="INTERIM">Interim</option>
+                                <option value="MOTION">Motion</option>
+                                <option value="OTHER">Other</option>
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Status</Label>
+                            <select
+                                value={formData.status}
+                                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
+                            >
+                                <option value="SCHEDULED">Scheduled</option>
+                                <option value="COMPLETED">Completed</option>
+                                <option value="POSTPONED">Postponed</option>
+                                <option value="ADJOURNED">Adjourned</option>
+                                <option value="CANCELLED">Cancelled</option>
+                            </select>
+                        </div>
+
+                        {/* Court Details */}
+                        <div className="space-y-2">
+                            <Label>Court Number</Label>
+                            <Input
+                                value={formData.courtNumber}
+                                onChange={(e) => setFormData({ ...formData, courtNumber: e.target.value })}
+                                placeholder="e.g., Courtroom 3"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Item Number</Label>
+                            <Input
+                                value={formData.courtItemNumber}
+                                onChange={(e) => setFormData({ ...formData, courtItemNumber: e.target.value })}
+                                placeholder="e.g., Item 5"
+                            />
+                        </div>
+
+                        {/* Judge & Counsel */}
+                        <div className="space-y-2">
+                            <Label>Judge Name</Label>
+                            <Input
+                                value={formData.judgeName}
+                                onChange={(e) => setFormData({ ...formData, judgeName: e.target.value })}
+                                placeholder="Judge's name"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Hearing Counsel</Label>
+                            <select
+                                value={formData.hearingCounselId}
+                                onChange={(e) => setFormData({ ...formData, hearingCounselId: e.target.value })}
+                                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
+                            >
+                                <option value="">None</option>
+                                {members.map(m => (
+                                    <option key={m.id} value={m.id}>
+                                        {m.user.name} {m.role === 'INTERN' ? '(Intern)' : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Accompanied By & Order Link */}
+                        <div className="space-y-2">
+                            <Label>Accompanied By</Label>
+                            <MultiSelect
+                                options={memberOptions}
+                                value={formData.accompaniedByIds}
+                                onValueChange={(vals) => setFormData({ ...formData, accompaniedByIds: vals })}
+                                placeholder="Select accompanying"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Order Link</Label>
+                            <Input
+                                type="url"
+                                value={formData.orderLink}
+                                onChange={(e) => setFormData({ ...formData, orderLink: e.target.value })}
+                                placeholder="Link to order"
+                            />
+                        </div>
+
+                        {/* Next Date & Outcome */}
+                        <div className="space-y-2">
+                            <Label>Next Hearing Date</Label>
+                            <Input
+                                type="date"
+                                value={formData.nextDateOfHearing}
+                                onChange={(e) => setFormData({ ...formData, nextDateOfHearing: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Outcome</Label>
+                            <Input
+                                value={formData.outcome}
+                                onChange={(e) => setFormData({ ...formData, outcome: e.target.value })}
+                                placeholder="Hearing outcome"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Full Width Fields */}
+                    <div className="space-y-2">
+                        <Label>Notes</Label>
+                        <Textarea
+                            value={formData.notes}
+                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                            rows={3}
+                            placeholder="Additional notes..."
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Additional Remarks</Label>
+                        <Textarea
+                            value={formData.additionalRemarks}
+                            onChange={(e) => setFormData({ ...formData, additionalRemarks: e.target.value })}
+                            rows={3}
+                            placeholder="Any additional remarks..."
+                        />
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                        <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+                        <Button type="submit" disabled={isLoading}>
+                            {isLoading ? (
+                                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</>
+                            ) : (
+                                <><Save className="w-4 h-4 mr-2" />Update Hearing</>
+                            )}
+                        </Button>
+                    </div>
+                </form>
             </div>
         </div>
     )
