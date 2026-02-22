@@ -28,7 +28,7 @@ import Link from 'next/link'
 const courtTypes = [
     { value: 'SUPREME', label: 'Supreme Court' },
     { value: 'HIGH', label: 'High Court' },
-    { value: ' DISTRICT', label: 'District Court' },
+    { value: 'DISTRICT', label: 'District Court' },
     { value: 'TRIBUNAL', label: 'Tribunal' },
     { value: 'FAMILY', label: 'Family Court' },
     { value: 'CONSUMER', label: 'Consumer Court' },

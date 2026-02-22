@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { requirePermission, isErrorResponse } from '@/lib/rbac'
 
 // GET /api/workspaces/[id] - Get workspace details
 export async function GET(
@@ -35,6 +36,9 @@ export async function GET(
                                 email: true,
                                 avatar: true,
                             },
+                        },
+                        customPermissions: {
+                            select: { action: true, granted: true },
                         },
                     },
                     orderBy: { createdAt: 'asc' },
@@ -84,19 +88,9 @@ export async function PUT(
         const body = await request.json()
         const { name, description } = body
 
-        // Check if user is owner
-        const workspace = await prisma.workspace.findUnique({
-            where: { id },
-            select: { ownerId: true },
-        })
-
-        if (!workspace) {
-            return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
-        }
-
-        if (workspace.ownerId !== session.user.id) {
-            return NextResponse.json({ error: 'Only the owner can update workspace settings' }, { status: 403 })
-        }
+        // Check RBAC permission
+        const rbac = await requirePermission(id, 'workspace.manage')
+        if (isErrorResponse(rbac)) return rbac
 
         const updatedWorkspace = await prisma.workspace.update({
             where: { id },

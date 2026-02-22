@@ -105,11 +105,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2">
-                <input type="checkbox" className="rounded border-border" />
-                Remember me
-              </label>
+            <div className="flex items-center justify-end text-sm">
               <Link href="/forgot-password" className="text-primary hover:underline">
                 Forgot password?
               </Link>
@@ -117,7 +113,8 @@ export default function LoginPage() {
 
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
+              variant="gradient"
+              className="w-full"
               disabled={loading}
             >
               {loading ? 'Signing In...' : 'Sign In'}

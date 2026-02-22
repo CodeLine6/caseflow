@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { startOfDay, endOfDay, parseISO, addDays } from 'date-fns'
+import { parseISO, addDays } from 'date-fns'
+import { getISTStartOfDay, getISTEndOfDay, formatISTDate } from '@/lib/timezone'
 
 // GET /api/cause-list - Get hearings for a specific date (defaults to today)
 export async function GET(request: NextRequest) {
@@ -17,8 +18,8 @@ export async function GET(request: NextRequest) {
 
         // Parse date or default to today
         const targetDate = dateParam ? parseISO(dateParam) : new Date()
-        const dayStart = startOfDay(targetDate)
-        const dayEnd = endOfDay(targetDate)
+        const dayStart = getISTStartOfDay(targetDate)
+        const dayEnd = getISTEndOfDay(targetDate)
 
         // Get user's workspaces
         const memberships = await prisma.workspaceMember.findMany({
@@ -69,11 +70,10 @@ export async function GET(request: NextRequest) {
         })
 
         // Get week's hearing counts for calendar view
-        const weekStart = startOfDay(addDays(targetDate, -3))
-        const weekEnd = endOfDay(addDays(targetDate, 3))
+        const weekStart = getISTStartOfDay(addDays(targetDate, -3))
+        const weekEnd = getISTEndOfDay(addDays(targetDate, 3))
 
-        const weekHearings = await prisma.hearing.groupBy({
-            by: ['hearingDate'],
+        const weekHearings = await prisma.hearing.findMany({
             where: {
                 hearingDate: {
                     gte: weekStart,
@@ -83,12 +83,13 @@ export async function GET(request: NextRequest) {
                     workspaceId: { in: workspaceIds },
                 },
             },
-            _count: true,
+            select: { hearingDate: true },
         })
 
+        // Count hearings per day using IST dates
         const hearingsByDate = weekHearings.reduce((acc, item) => {
-            const dateKey = item.hearingDate.toISOString().split('T')[0]
-            acc[dateKey] = item._count
+            const dateKey = formatISTDate(new Date(item.hearingDate))
+            acc[dateKey] = (acc[dateKey] || 0) + 1
             return acc
         }, {} as Record<string, number>)
 

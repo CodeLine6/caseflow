@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import {
     Briefcase, Plus, Search, Filter, FileText,
     Calendar, Users, ChevronDown, Scale, AlertCircle,
-    Clock, CheckCircle, XCircle, Loader2, ArrowLeft
+    Clock, CheckCircle, XCircle, Loader2, ArrowLeft, Gavel, UserPen
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PermissionGate } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -41,6 +42,9 @@ type Case = {
         documents: number
         tasks: number
     }
+    hearings: {
+        hearingDate: string
+    }[]
 }
 
 const statusConfig: Record<string, { label: string; icon: React.ElementType; color: string }> = {
@@ -87,6 +91,8 @@ export default function CasesPage() {
         try {
             setLoading(true)
             const params = new URLSearchParams()
+            const wsId = localStorage.getItem('activeWorkspaceId')
+            if (wsId) params.append('workspaceId', wsId)
             if (statusFilter) params.append('status', statusFilter)
             if (categoryFilter) params.append('category', categoryFilter)
             if (searchQuery) params.append('search', searchQuery)
@@ -116,6 +122,7 @@ export default function CasesPage() {
             day: '2-digit',
             month: 'short',
             year: 'numeric',
+            timeZone: 'Asia/Kolkata',
         })
     }
 
@@ -156,13 +163,18 @@ export default function CasesPage() {
                         <p className="text-muted-foreground mt-1">Manage and track all your legal cases</p>
                     </div>
                 </div>
-                <Button
-                    className="bg-gradient-to-r from-primary to-accent text-white hover:opacity-90 gap-2"
-                    onClick={() => router.push('/cases/new')}
-                >
-                    <Plus className="w-4 h-4" />
-                    New Case
-                </Button>
+                <div className="flex items-center gap-2">
+                    <PermissionGate permission="cases.create">
+                        <Button
+                            className="gap-2"
+                            variant="gradient"
+                            onClick={() => router.push('/cases/new')}
+                        >
+                            <Plus className="w-4 h-4" />
+                            New Case
+                        </Button>
+                    </PermissionGate>
+                </div>
             </div>
 
             {/* Stats Cards */}
@@ -290,13 +302,16 @@ export default function CasesPage() {
                                 ? 'Try adjusting your filters to find cases.'
                                 : 'Get started by creating your first case.'}
                         </p>
-                        <Button
-                            className="bg-gradient-to-r from-primary to-accent text-white gap-2"
-                            onClick={() => router.push('/cases/new')}
-                        >
-                            <Plus className="w-4 h-4" />
-                            Create First Case
-                        </Button>
+                        <PermissionGate permission="cases.create">
+                            <Button
+                                className="gap-2"
+                                variant="gradient"
+                                onClick={() => router.push('/cases/new')}
+                            >
+                                <Plus className="w-4 h-4" />
+                                Create First Case
+                            </Button>
+                        </PermissionGate>
                     </CardContent>
                 </Card>
             ) : (
@@ -337,6 +352,12 @@ export default function CasesPage() {
 
                                             {/* Meta info */}
                                             <div className="flex flex-wrap gap-4 mt-4 text-sm text-muted-foreground">
+                                                {caseItem.mainCounsel && (
+                                                    <span className="flex items-center gap-1">
+                                                        <UserPen className="w-4 h-4" />
+                                                        {caseItem.mainCounsel.name}
+                                                    </span>
+                                                )}
                                                 {caseItem.client && (
                                                     <span className="flex items-center gap-1">
                                                         <Users className="w-4 h-4" />
@@ -347,6 +368,12 @@ export default function CasesPage() {
                                                     <span className="flex items-center gap-1">
                                                         <Scale className="w-4 h-4" />
                                                         {caseItem.court.courtName}
+                                                    </span>
+                                                )}
+                                                {caseItem.hearings?.[0] && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Gavel className="w-4 h-4" />
+                                                        Hearing: {formatDate(caseItem.hearings[0].hearingDate)}
                                                     </span>
                                                 )}
                                                 <span className="flex items-center gap-1">

@@ -1,5 +1,7 @@
 'use client'
 
+import { formatTime12h } from '@/lib/timezone'
+
 import { useState, useEffect } from 'react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,6 +22,7 @@ import {
 import Link from 'next/link'
 import { format, addDays, subDays, isToday, isSameDay, parseISO } from 'date-fns'
 import DisplayBoard from '@/components/DisplayBoard'
+import { PermissionGate } from '@/components/PermissionGate'
 
 interface Hearing {
     id: string
@@ -102,8 +105,7 @@ export default function CauseListPage() {
     const weekDates = Array.from({ length: 7 }, (_, i) => addDays(subDays(selectedDate, 3), i))
 
     const formatHearingTime = (time: string | null) => {
-        if (!time) return 'Time TBD'
-        return time
+        return formatTime12h(time)
     }
 
     return (
@@ -235,9 +237,11 @@ export default function CauseListPage() {
                                     <p className="text-muted-foreground mb-4">
                                         There are no court hearings scheduled for {format(selectedDate, 'MMMM d, yyyy')}
                                     </p>
-                                    <Link href="/hearings/new">
-                                        <Button variant="outline">Schedule a Hearing</Button>
-                                    </Link>
+                                    <PermissionGate permission="hearings.create">
+                                        <Link href="/hearings/new">
+                                            <Button variant="outline">Schedule a Hearing</Button>
+                                        </Link>
+                                    </PermissionGate>
                                 </CardContent>
                             </Card>
                         ) : (

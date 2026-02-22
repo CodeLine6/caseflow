@@ -3,7 +3,10 @@ import { cookies } from 'next/headers'
 import { jwtVerify } from 'jose'
 import { getAdminById } from '@/lib/admin-auth'
 
-const JWT_SECRET = new TextEncoder().encode(process.env.NEXTAUTH_SECRET || 'admin-secret-key')
+if (!process.env.NEXTAUTH_SECRET) {
+    throw new Error('NEXTAUTH_SECRET environment variable is required')
+}
+const JWT_SECRET = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
 
 /**
  * Get current admin session from cookie

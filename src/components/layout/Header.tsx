@@ -137,6 +137,11 @@ export default function Header({ sidebarCollapsed }: HeaderProps) {
                             type="text"
                             placeholder="Search cases, clients, documents..."
                             className="w-full h-10 pl-10 pr-4 rounded-lg bg-secondary/50 border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-all"
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                                    window.location.href = `/cases?search=${encodeURIComponent(e.currentTarget.value.trim())}`
+                                }
+                            }}
                         />
                     </div>
                 </div>

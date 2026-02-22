@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requirePermission, isErrorResponse, filterWorkspacesByPermission } from '@/lib/rbac'
 import type { Prisma } from '@prisma/client'
 
 // GET /api/cases - List all cases for the user's workspace
@@ -19,17 +20,24 @@ export async function GET(request: Request) {
         const category = searchParams.get('category')
         const search = searchParams.get('search')
 
-        // Get user's workspace memberships
-        const memberships = await prisma.workspaceMember.findMany({
-            where: { userId: session.user.id },
-            select: { workspaceId: true },
-        })
-
-        const workspaceIds = memberships.map((m: { workspaceId: string }) => m.workspaceId)
+        // Determine view scope from permissions:
+        // cases.read   → view all cases in workspace
+        // cases.readOwn → view only cases user is associated with
+        const [allWorkspaceIds, ownWorkspaceIds] = await Promise.all([
+            filterWorkspacesByPermission(session.user.id, 'cases.read'),
+            filterWorkspacesByPermission(session.user.id, 'cases.readOwn'),
+        ])
+        const hasViewAll = allWorkspaceIds.length > 0
+        const allowedWorkspaceIds = hasViewAll ? allWorkspaceIds : ownWorkspaceIds
+        if (allowedWorkspaceIds.length === 0) {
+            return NextResponse.json({ cases: [] })
+        }
 
         // Build query filters
         const whereClause: Prisma.CaseWhereInput = {
-            workspaceId: workspaceId ? { in: [workspaceId] } : { in: workspaceIds },
+            workspaceId: workspaceId && allowedWorkspaceIds.includes(workspaceId)
+                ? { in: [workspaceId] }
+                : { in: allowedWorkspaceIds },
         }
 
         if (status) {
@@ -40,12 +48,29 @@ export async function GET(request: Request) {
             whereClause.caseCategory = category as Prisma.EnumCaseCategoryFilter
         }
 
+        // If user only has readOwn (not read), scope results to associated cases
+        const mineConditions: Prisma.CaseWhereInput[] | undefined = !hasViewAll ? [
+            { mainCounselId: session.user.id },
+            { hearings: { some: { hearingCounsel: { userId: session.user.id } } } },
+            { hearings: { some: { attendance: { some: { member: { userId: session.user.id } } } } } },
+        ] : undefined
+
         if (search) {
-            whereClause.OR = [
+            const searchConditions: Prisma.CaseWhereInput[] = [
                 { title: { contains: search, mode: 'insensitive' } },
                 { caseNumber: { contains: search, mode: 'insensitive' } },
                 { description: { contains: search, mode: 'insensitive' } },
             ]
+            if (mineConditions) {
+                whereClause.AND = [
+                    { OR: mineConditions },
+                    { OR: searchConditions },
+                ]
+            } else {
+                whereClause.OR = searchConditions
+            }
+        } else if (mineConditions) {
+            whereClause.OR = mineConditions
         }
 
         const cases = await prisma.case.findMany({
@@ -76,6 +101,13 @@ export async function GET(request: Request) {
                         hearings: true,
                         documents: true,
                         tasks: true,
+                    },
+                },
+                hearings: {
+                    orderBy: { hearingDate: 'desc' },
+                    take: 1,
+                    select: {
+                        hearingDate: true,
                     },
                 },
             },
@@ -129,19 +161,14 @@ export async function POST(request: Request) {
             )
         }
 
-        // Check if user has access to this workspace
-        const membership = await prisma.workspaceMember.findFirst({
-            where: {
-                workspaceId,
-                userId: session.user.id,
-            },
-        })
+        // Check RBAC permission
+        const rbac = await requirePermission(workspaceId, 'cases.create')
+        if (isErrorResponse(rbac)) return rbac
 
-        if (!membership) {
-            return NextResponse.json(
-                { error: 'You do not have access to this workspace' },
-                { status: 403 }
-            )
+        // If assigning counsel to someone other than self, check cases.assign
+        if (mainCounselId && mainCounselId !== session.user.id) {
+            const assignRbac = await requirePermission(workspaceId, 'cases.assign')
+            if (isErrorResponse(assignRbac)) return assignRbac
         }
 
         // Check if case number is unique
@@ -173,7 +200,7 @@ export async function POST(request: Request) {
                 createdById: session.user.id,
                 clientId,
                 courtId,
-                mainCounselId,
+                mainCounselId: mainCounselId || session.user.id,
             },
             include: {
                 client: true,

@@ -37,6 +37,12 @@ export default function RegisterPage() {
       return
     }
 
+    if (!/\d/.test(formData.password)) {
+      setError('Password must contain at least one number')
+      setLoading(false)
+      return
+    }
+
     try {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
@@ -173,7 +179,8 @@ export default function RegisterPage() {
 
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700"
+              className="w-full"
+              variant="gradient"
               disabled={loading}
             >
               {loading ? 'Creating Account...' : 'Create Account'}

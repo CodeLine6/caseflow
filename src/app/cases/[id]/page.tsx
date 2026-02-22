@@ -1,5 +1,7 @@
 'use client'
 
+import { formatTime12h } from '@/lib/timezone'
+
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -14,6 +16,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { MultiSelect } from '@/components/ui/multi-select'
+import { TimePicker12h } from '@/components/ui/time-picker-12h'
+import { PermissionGate } from '@/components/PermissionGate'
 
 type CaseData = {
     id: string
@@ -29,6 +33,7 @@ type CaseData = {
     opposingCounsel: string | null
     caseValue: number | null
     clientId: string | null
+    mainCounselId: string | null
     client: { id: string; name: string } | null
     mainCounsel: { id: string; name: string; avatar: string | null } | null
     court: { id: string; courtName: string; courtType: string } | null
@@ -131,6 +136,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                 body: JSON.stringify({
                     ...editData,
                     clientId: editData.clientId || null,
+                    mainCounselId: editData.mainCounselId || null,
                 }),
             })
 
@@ -212,6 +218,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             day: '2-digit',
             month: 'short',
             year: 'numeric',
+            timeZone: 'Asia/Kolkata',
         })
     }
 
@@ -284,25 +291,32 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                             <Button variant="ghost" onClick={() => setIsEditing(false)} disabled={saving}>
                                 <X className="w-4 h-4 mr-2" />Cancel
                             </Button>
-                            <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r from-primary to-accent text-white">
+                            <Button onClick={handleSave} disabled={saving} variant="gradient" className="gap-2">
                                 {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                                 Save
                             </Button>
                         </>
                     ) : (
                         <>
-                            <Button variant="outline" onClick={() => {
-                                setIsEditing(true)
-                                fetch('/api/clients').then(res => res.json()).then(data => {
-                                    setClients(data.clients || [])
-                                }).catch(err => console.error('Failed to fetch clients:', err))
-                            }}>
-                                <Edit className="w-4 h-4 mr-2" />Edit
-                            </Button>
-                            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-                                {deleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
-                                Delete
-                            </Button>
+                            <PermissionGate permission="cases.update">
+                                <Button variant="outline" onClick={() => {
+                                    setIsEditing(true)
+                                    fetch('/api/clients').then(res => res.json()).then(data => {
+                                        setClients(data.clients || [])
+                                    }).catch(err => console.error('Failed to fetch clients:', err))
+                                    if (caseData?.workspaceId) {
+                                        fetchWorkspaceMembers(caseData.workspaceId)
+                                    }
+                                }}>
+                                    <Edit className="w-4 h-4 mr-2" />Edit
+                                </Button>
+                            </PermissionGate>
+                            <PermissionGate permission="cases.delete">
+                                <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+                                    {deleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                                    Delete
+                                </Button>
+                            </PermissionGate>
                         </>
                     )}
                 </div>
@@ -401,9 +415,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                 <Calendar className="w-5 h-5 text-primary" />
                                 Hearings ({caseData._count.hearings})
                             </CardTitle>
-                            <Button size="sm" variant="outline" onClick={() => router.push(`/hearings/new?caseId=${id}`)}>
-                                <Plus className="w-4 h-4 mr-1" />Add
-                            </Button>
+                            <PermissionGate permission="hearings.create">
+                                <Button size="sm" variant="outline" onClick={() => router.push(`/hearings/new?caseId=${id}`)}>
+                                    <Plus className="w-4 h-4 mr-1" />Add
+                                </Button>
+                            </PermissionGate>
                         </CardHeader>
                         <CardContent>
                             {caseData.hearings.length === 0 ? (
@@ -428,7 +444,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                                         {h.hearingTime && (
                                                             <span className="flex items-center gap-1">
                                                                 <Clock className="w-3.5 h-3.5" />
-                                                                {h.hearingTime}
+                                                                {formatTime12h(h.hearingTime)}
                                                             </span>
                                                         )}
                                                         {h.courtNumber && (
@@ -441,12 +457,16 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                                     </div>
                                                 </div>
                                                 <div className="flex gap-1">
-                                                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEditHearing(h)}>
-                                                        <Edit className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDeleteHearing(h.id)}>
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </Button>
+                                                    <PermissionGate permission="hearings.update">
+                                                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEditHearing(h)}>
+                                                            <Edit className="w-3.5 h-3.5" />
+                                                        </Button>
+                                                    </PermissionGate>
+                                                    <PermissionGate permission="hearings.delete">
+                                                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDeleteHearing(h.id)}>
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </Button>
+                                                    </PermissionGate>
                                                 </div>
                                             </div>
                                             {/* Extra details */}
@@ -504,9 +524,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                 <CheckCircle className="w-5 h-5 text-primary" />
                                 Tasks ({caseData._count.tasks})
                             </CardTitle>
-                            <Button size="sm" variant="outline" onClick={() => router.push(`/tasks/new?caseId=${id}`)}>
-                                <Plus className="w-4 h-4 mr-1" />Add
-                            </Button>
+                            <PermissionGate permission="tasks.create">
+                                <Button size="sm" variant="outline" onClick={() => router.push(`/tasks/new?caseId=${id}`)}>
+                                    <Plus className="w-4 h-4 mr-1" />Add
+                                </Button>
+                            </PermissionGate>
                         </CardHeader>
                         <CardContent>
                             {caseData.tasks.length === 0 ? (
@@ -541,6 +563,23 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                             {isEditing ? (
                                 <>
                                     <div className="space-y-2">
+                                        <Label className="text-xs text-muted-foreground uppercase">Main Counsel</Label>
+                                        <select
+                                            value={editData.mainCounselId || ''}
+                                            onChange={(e) => setEditData({ ...editData, mainCounselId: e.target.value || null })}
+                                            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
+                                        >
+                                            <option value="">No counsel assigned</option>
+                                            {workspaceMembers
+                                                .filter(m => m.role === 'MEMBER')
+                                                .map(m => (
+                                                    <option key={m.user.id} value={m.user.id}>
+                                                        {m.user.name}
+                                                    </option>
+                                                ))}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2">
                                         <Label className="text-xs text-muted-foreground uppercase">Client</Label>
                                         <select
                                             value={editData.clientId || ''}
@@ -574,6 +613,12 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                 </>
                             ) : (
                                 <>
+                                    {caseData.mainCounsel && (
+                                        <div>
+                                            <p className="text-xs text-muted-foreground uppercase">Main Counsel</p>
+                                            <p className="font-medium">{caseData.mainCounsel.name}</p>
+                                        </div>
+                                    )}
                                     {caseData.client && (
                                         <div>
                                             <p className="text-xs text-muted-foreground uppercase">Client</p>
@@ -592,7 +637,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                             <p className="font-medium">{caseData.opposingCounsel}</p>
                                         </div>
                                     )}
-                                    {!caseData.client && !caseData.opposingParty && !caseData.opposingCounsel && (
+                                    {!caseData.mainCounsel && !caseData.client && !caseData.opposingParty && !caseData.opposingCounsel && (
                                         <p className="text-muted-foreground text-sm">No parties assigned</p>
                                     )}
                                 </>
@@ -634,9 +679,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                     ))}
                                 </div>
                             )}
-                            <Button size="sm" variant="outline" className="w-full mt-3" onClick={() => router.push(`/documents/new?caseId=${id}`)}>
-                                <Plus className="w-4 h-4 mr-1" />Upload
-                            </Button>
+                            <PermissionGate permission="documents.upload">
+                                <Button size="sm" variant="outline" className="w-full mt-3" onClick={() => router.push(`/documents/new?caseId=${id}`)}>
+                                    <Plus className="w-4 h-4 mr-1" />Upload
+                                </Button>
+                            </PermissionGate>
                         </CardContent>
                     </Card>
                 </div>
@@ -672,7 +719,7 @@ function EditHearingModal({
     onSuccess: () => void
 }) {
     const [formData, setFormData] = useState({
-        hearingDate: hearing.hearingDate ? new Date(hearing.hearingDate).toISOString().split('T')[0] : '',
+        hearingDate: hearing.hearingDate ? new Date(hearing.hearingDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) : '',
         hearingTime: hearing.hearingTime || '',
         hearingType: hearing.hearingType || 'OTHER',
         status: hearing.status || 'SCHEDULED',
@@ -708,7 +755,7 @@ function EditHearingModal({
                 body: JSON.stringify({
                     ...formData,
                     hearingDate: new Date(
-                        `${formData.hearingDate}T${formData.hearingTime || '00:00'}`
+                        `${formData.hearingDate}T12:00:00+05:30`
                     ).toISOString(),
                     hearingCounselId: formData.hearingCounselId || null,
                     accompaniedByIds: formData.accompaniedByIds,
@@ -760,10 +807,9 @@ function EditHearingModal({
                         </div>
                         <div className="space-y-2">
                             <Label>Time</Label>
-                            <Input
-                                type="time"
+                            <TimePicker12h
                                 value={formData.hearingTime}
-                                onChange={(e) => setFormData({ ...formData, hearingTime: e.target.value })}
+                                onChange={(val) => setFormData({ ...formData, hearingTime: val })}
                             />
                         </div>
 
@@ -846,60 +892,68 @@ function EditHearingModal({
                         <div className="space-y-2">
                             <Label>Accompanied By</Label>
                             <MultiSelect
-                                options={memberOptions}
+                                options={memberOptions.filter(o => o.value !== formData.hearingCounselId)}
                                 value={formData.accompaniedByIds}
                                 onValueChange={(vals) => setFormData({ ...formData, accompaniedByIds: vals })}
                                 placeholder="Select accompanying"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label>Order Link</Label>
-                            <Input
-                                type="url"
-                                value={formData.orderLink}
-                                onChange={(e) => setFormData({ ...formData, orderLink: e.target.value })}
-                                placeholder="Link to order"
-                            />
-                        </div>
-
-                        {/* Next Date & Outcome */}
-                        <div className="space-y-2">
-                            <Label>Next Hearing Date</Label>
-                            <Input
-                                type="date"
-                                value={formData.nextDateOfHearing}
-                                onChange={(e) => setFormData({ ...formData, nextDateOfHearing: e.target.value })}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Outcome</Label>
-                            <Input
-                                value={formData.outcome}
-                                onChange={(e) => setFormData({ ...formData, outcome: e.target.value })}
-                                placeholder="Hearing outcome"
-                            />
-                        </div>
                     </div>
 
-                    {/* Full Width Fields */}
-                    <div className="space-y-2">
-                        <Label>Notes</Label>
-                        <Textarea
-                            value={formData.notes}
-                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                            rows={3}
-                            placeholder="Additional notes..."
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Additional Remarks</Label>
-                        <Textarea
-                            value={formData.additionalRemarks}
-                            onChange={(e) => setFormData({ ...formData, additionalRemarks: e.target.value })}
-                            rows={3}
-                            placeholder="Any additional remarks..."
-                        />
-                    </div>
+                    {formData.status === 'COMPLETED' && (
+                        <>
+                            {/* Order Link, Next Date & Outcome */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Order Link</Label>
+                                    <Input
+                                        type="url"
+                                        value={formData.orderLink}
+                                        onChange={(e) => setFormData({ ...formData, orderLink: e.target.value })}
+                                        placeholder="Link to order"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Outcome</Label>
+                                    <Input
+                                        value={formData.outcome}
+                                        onChange={(e) => setFormData({ ...formData, outcome: e.target.value })}
+                                        placeholder="Hearing outcome"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Next Hearing Date</Label>
+                                    <Input
+                                        type="date"
+                                        value={formData.nextDateOfHearing}
+                                        onChange={(e) => setFormData({ ...formData, nextDateOfHearing: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Full Width Fields */}
+                            <div className="space-y-2">
+                                <Label>Notes</Label>
+                                <Textarea
+                                    value={formData.notes}
+                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                    rows={3}
+                                    placeholder="Additional notes..."
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Additional Remarks</Label>
+                                <Textarea
+                                    value={formData.additionalRemarks}
+                                    onChange={(e) => setFormData({ ...formData, additionalRemarks: e.target.value })}
+                                    rows={3}
+                                    placeholder="Any additional remarks..."
+                                />
+                            </div>
+                        </>
+                    )}
 
                     <div className="flex justify-end gap-2 pt-2">
                         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>

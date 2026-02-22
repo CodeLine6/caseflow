@@ -33,6 +33,8 @@ export default function NewTaskPage() {
     const [error, setError] = useState('')
     const [cases, setCases] = useState<Case[]>([])
     const [users, setUsers] = useState<User[]>([])
+    const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
+    const [workspaceError, setWorkspaceError] = useState('')
 
     const [formData, setFormData] = useState({
         title: '',
@@ -45,6 +47,31 @@ export default function NewTaskPage() {
     })
 
     useEffect(() => {
+        async function validateWorkspace() {
+            try {
+                const res = await fetch('/api/workspaces')
+                const data = await res.json()
+                const workspaces = data.workspaces || []
+
+                if (workspaces.length === 0) {
+                    setWorkspaceError('No workspace found. Please create a workspace first.')
+                    return
+                }
+
+                const stored = localStorage.getItem('activeWorkspaceId')
+                const match = workspaces.find((ws: { id: string }) => ws.id === stored)
+
+                if (match) {
+                    setActiveWorkspaceId(match.id)
+                } else {
+                    setActiveWorkspaceId(workspaces[0].id)
+                    localStorage.setItem('activeWorkspaceId', workspaces[0].id)
+                }
+            } catch {
+                setWorkspaceError('Failed to load workspaces. Please try again.')
+            }
+        }
+        validateWorkspace()
         fetchResources()
     }, [])
 
@@ -77,6 +104,11 @@ export default function NewTaskPage() {
         e.preventDefault()
         setError('')
 
+        if (!activeWorkspaceId) {
+            setError(workspaceError || 'No active workspace selected. Please select a workspace from the sidebar first.')
+            return
+        }
+
         if (!formData.title) {
             setError('Please enter a task title')
             return
@@ -89,6 +121,7 @@ export default function NewTaskPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...formData,
+                    workspaceId: activeWorkspaceId,
                     dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : null,
                 }),
             })
@@ -144,103 +177,116 @@ export default function NewTaskPage() {
                     </Card>
                 )}
 
-                <form onSubmit={handleSubmit}>
+                {workspaceError ? (
                     <Card className="glass-card">
-                        <CardHeader>
-                            <CardTitle>Task Details</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <div className="space-y-2">
-                                <Label htmlFor="title">Task Title *</Label>
-                                <Input
-                                    id="title"
-                                    value={formData.title}
-                                    onChange={(e) => handleChange('title', e.target.value)}
-                                    placeholder="e.g., Review case documents"
-                                    required
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="description">Description</Label>
-                                <Textarea
-                                    id="description"
-                                    value={formData.description}
-                                    onChange={(e) => handleChange('description', e.target.value)}
-                                    placeholder="Add details about this task..."
-                                    rows={3}
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="dueDate">Due Date</Label>
-                                    <Input
-                                        id="dueDate"
-                                        type="datetime-local"
-                                        value={formData.dueDate}
-                                        onChange={(e) => handleChange('dueDate', e.target.value)}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="priority">Priority</Label>
-                                    <select
-                                        id="priority"
-                                        value={formData.priority}
-                                        onChange={(e) => handleChange('priority', e.target.value)}
-                                        className="w-full p-3 border rounded-lg bg-background"
-                                    >
-                                        <option value="LOW">Low</option>
-                                        <option value="MEDIUM">Medium</option>
-                                        <option value="HIGH">High</option>
-                                        <option value="URGENT">Urgent</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="caseId">Related Case (Optional)</Label>
-                                <select
-                                    id="caseId"
-                                    value={formData.caseId}
-                                    onChange={(e) => handleChange('caseId', e.target.value)}
-                                    className="w-full p-3 border rounded-lg bg-background"
-                                >
-                                    <option value="">No Case</option>
-                                    {cases.map(c => (
-                                        <option key={c.id} value={c.id}>
-                                            {c.caseNumber} - {c.title}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
+                        <CardContent className="p-12 text-center space-y-4">
+                            <AlertCircle className="w-12 h-12 text-destructive mx-auto" />
+                            <h2 className="text-xl font-semibold">{workspaceError}</h2>
+                            <p className="text-muted-foreground">You need to be a member of a workspace before creating a task.</p>
+                            <Button variant="gradient" onClick={() => router.push('/workspaces')}>
+                                Go to Workspaces
+                            </Button>
                         </CardContent>
                     </Card>
+                ) : (
+                    <form onSubmit={handleSubmit}>
+                        <Card className="glass-card">
+                            <CardHeader>
+                                <CardTitle>Task Details</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                <div className="space-y-2">
+                                    <Label htmlFor="title">Task Title *</Label>
+                                    <Input
+                                        id="title"
+                                        value={formData.title}
+                                        onChange={(e) => handleChange('title', e.target.value)}
+                                        placeholder="e.g., Review case documents"
+                                        required
+                                    />
+                                </div>
 
-                    <div className="flex justify-end gap-3 mt-6">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => router.back()}
-                            disabled={loading}
-                        >
-                            Cancel
-                        </Button>
-                        <Button type="submit" disabled={loading}>
-                            {loading ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    Creating...
-                                </>
-                            ) : (
-                                <>
-                                    <Save className="w-4 h-4 mr-2" />
-                                    Create Task
-                                </>
-                            )}
-                        </Button>
-                    </div>
-                </form>
+                                <div className="space-y-2">
+                                    <Label htmlFor="description">Description</Label>
+                                    <Textarea
+                                        id="description"
+                                        value={formData.description}
+                                        onChange={(e) => handleChange('description', e.target.value)}
+                                        placeholder="Add details about this task..."
+                                        rows={3}
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="dueDate">Due Date</Label>
+                                        <Input
+                                            id="dueDate"
+                                            type="datetime-local"
+                                            value={formData.dueDate}
+                                            onChange={(e) => handleChange('dueDate', e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="priority">Priority</Label>
+                                        <select
+                                            id="priority"
+                                            value={formData.priority}
+                                            onChange={(e) => handleChange('priority', e.target.value)}
+                                            className="w-full p-3 border rounded-lg bg-background"
+                                        >
+                                            <option value="LOW">Low</option>
+                                            <option value="MEDIUM">Medium</option>
+                                            <option value="HIGH">High</option>
+                                            <option value="URGENT">Urgent</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="caseId">Related Case (Optional)</Label>
+                                    <select
+                                        id="caseId"
+                                        value={formData.caseId}
+                                        onChange={(e) => handleChange('caseId', e.target.value)}
+                                        className="w-full p-3 border rounded-lg bg-background"
+                                    >
+                                        <option value="">No Case</option>
+                                        {cases.map(c => (
+                                            <option key={c.id} value={c.id}>
+                                                {c.caseNumber} - {c.title}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <div className="flex justify-end gap-3 mt-6">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => router.back()}
+                                disabled={loading}
+                            >
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={loading}>
+                                {loading ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        Creating...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save className="w-4 h-4 mr-2" />
+                                        Create Task
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                    </form>
+                )}
             </div>
         </div>
     )

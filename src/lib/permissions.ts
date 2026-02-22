@@ -5,6 +5,7 @@ export const PERMISSIONS = {
     // Case permissions
     'cases.create': 'Create new cases',
     'cases.read': 'View cases',
+    'cases.readOwn': 'View own cases',
     'cases.update': 'Edit case details',
     'cases.delete': 'Delete cases',
     'cases.assign': 'Assign counsel to cases',
@@ -12,6 +13,7 @@ export const PERMISSIONS = {
     // Hearing permissions
     'hearings.create': 'Create hearings',
     'hearings.read': 'View hearings',
+    'hearings.readOwn': 'View own hearings',
     'hearings.update': 'Edit hearing details',
     'hearings.delete': 'Delete hearings',
     'hearings.schedule': 'Schedule hearings',
@@ -31,6 +33,7 @@ export const PERMISSIONS = {
     // Task permissions
     'tasks.create': 'Create tasks',
     'tasks.read': 'View tasks',
+    'tasks.readOwn': 'View own tasks',
     'tasks.update': 'Edit tasks',
     'tasks.delete': 'Delete tasks',
     'tasks.assign': 'Assign tasks to members',
@@ -69,31 +72,31 @@ export const ROLE_PERMISSIONS: Record<WorkspaceRole, Permission[]> = {
     ],
 
     MEMBER: [
-        'cases.read', 'cases.update',
-        'hearings.create', 'hearings.read', 'hearings.update', 'hearings.schedule',
+        'cases.readOwn', 'cases.update',
+        'hearings.create', 'hearings.readOwn', 'hearings.update', 'hearings.schedule',
         'documents.upload', 'documents.read', 'documents.download',
         'clients.read',
-        'tasks.create', 'tasks.read', 'tasks.update',
+        'tasks.create', 'tasks.readOwn', 'tasks.update',
         'reports.view',
         'invoices.read',
     ],
 
     ASSISTANT: [
-        'cases.read',
-        'hearings.read', 'hearings.update',
+        'cases.readOwn',
+        'hearings.readOwn', 'hearings.update',
         'documents.upload', 'documents.read', 'documents.download',
         'clients.read',
-        'tasks.read', 'tasks.update',
+        'tasks.readOwn', 'tasks.update',
         'reports.view',
         'invoices.read',
     ],
 
     INTERN: [
-        'cases.read',
-        'hearings.read',
+        'cases.readOwn',
+        'hearings.readOwn',
         'documents.read',
         'clients.read',
-        'tasks.read',
+        'tasks.readOwn',
     ],
 }
 
@@ -129,28 +132,18 @@ export const PERMISSION_GROUPS = {
     'Workspace': ['workspace.manage', 'workspace.invite', 'workspace.members'],
 } as const
 
+/**
+ * Maps a 'view all' permission to its 'view own' scoped counterpart.
+ * These .read permissions cycle through 3 states in the permission badge UI:
+ * View All (granted) → View Own (readOwn granted + read revoked) → Disabled
+ */
+export const TRI_STATE_PERMISSIONS: Partial<Record<Permission, Permission>> = {
+    'cases.read': 'cases.readOwn',
+    'hearings.read': 'hearings.readOwn',
+    'tasks.read': 'tasks.readOwn',
+}
+
 // ==================== SUPER ADMIN ====================
 
 import { prisma } from './prisma'
-
-/**
- * Check if a user has super admin privileges
- */
-export async function isSuperAdmin(userId: string): Promise<boolean> {
-    const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-    })
-    return user?.isSuperAdmin ?? false
-}
-
-/**
- * Require super admin privileges - throws error if user is not super admin
- */
-export async function requireSuperAdmin(userId: string): Promise<void> {
-    const isAdmin = await isSuperAdmin(userId)
-    if (!isAdmin) {
-        throw new Error('Super admin privileges required')
-    }
-}
 

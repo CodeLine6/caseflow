@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requirePermission, isErrorResponse } from '@/lib/rbac'
 
 // GET /api/cases/[id] - Get a single case
 export async function GET(
@@ -78,17 +79,9 @@ export async function GET(
             return NextResponse.json({ error: 'Case not found' }, { status: 404 })
         }
 
-        // Verify user has access to this workspace
-        const membership = await prisma.workspaceMember.findFirst({
-            where: {
-                workspaceId: caseData.workspaceId,
-                userId: session.user.id,
-            },
-        })
-
-        if (!membership) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-        }
+        // Check cases.read permission
+        const rbac = await requirePermission(caseData.workspaceId, 'cases.read')
+        if (isErrorResponse(rbac)) return rbac
 
         return NextResponse.json(caseData)
     } catch (error) {
@@ -122,15 +115,14 @@ export async function PUT(
             return NextResponse.json({ error: 'Case not found' }, { status: 404 })
         }
 
-        const membership = await prisma.workspaceMember.findFirst({
-            where: {
-                workspaceId: existingCase.workspaceId,
-                userId: session.user.id,
-            },
-        })
+        // Check RBAC permission
+        const rbac = await requirePermission(existingCase.workspaceId, 'cases.update')
+        if (isErrorResponse(rbac)) return rbac
 
-        if (!membership) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+        // If changing counsel assignment, check cases.assign
+        if (body.mainCounselId && body.mainCounselId !== session.user.id) {
+            const assignRbac = await requirePermission(existingCase.workspaceId, 'cases.assign')
+            if (isErrorResponse(assignRbac)) return assignRbac
         }
 
         const updatedCase = await prisma.case.update({
@@ -199,17 +191,9 @@ export async function DELETE(
             return NextResponse.json({ error: 'Case not found' }, { status: 404 })
         }
 
-        const membership = await prisma.workspaceMember.findFirst({
-            where: {
-                workspaceId: existingCase.workspaceId,
-                userId: session.user.id,
-                role: { in: ['ADMIN', 'MANAGER'] },
-            },
-        })
-
-        if (!membership) {
-            return NextResponse.json({ error: 'Only admins and managers can delete cases' }, { status: 403 })
-        }
+        // Check RBAC permission
+        const rbac = await requirePermission(existingCase.workspaceId, 'cases.delete')
+        if (isErrorResponse(rbac)) return rbac
 
         await prisma.case.delete({ where: { id } })
 

@@ -15,7 +15,7 @@ interface DisplayBoardEntry {
 }
 
 interface ScrapingResult {
-    courtId: string
+    courtId: number
     courtName: string
     success: boolean
     entriesCount: number
@@ -115,7 +115,7 @@ function parseDisplayBoard(html: string, config: ParserConfig): DisplayBoardEntr
 }
 
 // Scrape a single court's display board
-async function scrapeCourt(court: { id: string; courtName: string; displayBoardUrl: string }): Promise<ScrapingResult> {
+async function scrapeCourt(court: { id: number; courtName: string; displayBoardUrl: string }): Promise<ScrapingResult> {
     try {
         const config = detectParser(court.displayBoardUrl)
 
@@ -168,7 +168,7 @@ async function scrapeCourt(court: { id: string; courtName: string; displayBoardU
                         judgeName: entry.judgeName,
                         status: entry.status,
                         lastUpdated: new Date(),
-                        rawData: entry,
+                        rawData: JSON.parse(JSON.stringify(entry)),
                     },
                     create: {
                         courtId: court.id,
@@ -178,7 +178,7 @@ async function scrapeCourt(court: { id: string; courtName: string; displayBoardU
                         caseTitle: entry.caseTitle,
                         judgeName: entry.judgeName,
                         status: entry.status,
-                        rawData: entry,
+                        rawData: JSON.parse(JSON.stringify(entry)),
                     },
                 })
             })
@@ -211,10 +211,10 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json()
-        const { courtId, scrapeAll, url } = body
+        const { courtId, scrapeAll } = body
 
         // Get courts to scrape
-        let courtsToScrape: { id: string; courtName: string; displayBoardUrl: string }[] = []
+        let courtsToScrape: { id: number; courtName: string; displayBoardUrl: string }[] = []
 
         if (scrapeAll) {
             // Scrape all courts with display board URLs
@@ -232,7 +232,7 @@ export async function POST(request: NextRequest) {
         } else if (courtId) {
             // Scrape specific court
             const court = await prisma.court.findUnique({
-                where: { id: courtId },
+                where: { id: Number(courtId) },
                 select: {
                     id: true,
                     courtName: true,
@@ -244,14 +244,13 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: 'Court not found' }, { status: 404 })
             }
 
-            const displayUrl = url || court.displayBoardUrl
-            if (!displayUrl) {
+            if (!court.displayBoardUrl) {
                 return NextResponse.json({
                     error: 'No display board URL configured for this court'
                 }, { status: 400 })
             }
 
-            courtsToScrape = [{ ...court, displayBoardUrl: displayUrl }]
+            courtsToScrape = [court as typeof courtsToScrape[0]]
         } else {
             return NextResponse.json({
                 error: 'Either courtId or scrapeAll is required'
@@ -314,14 +313,18 @@ export async function GET(request: NextRequest) {
         const courtId = searchParams.get('courtId')
 
         if (courtId) {
+            const courtIdNum = Number(courtId)
+            if (isNaN(courtIdNum)) {
+                return NextResponse.json({ error: 'Invalid courtId' }, { status: 400 })
+            }
             // Get cache entries for specific court
             const cacheEntries = await prisma.displayBoardCache.findMany({
-                where: { courtId },
+                where: { courtId: courtIdNum },
                 orderBy: { courtNumber: 'asc' },
             })
 
             const court = await prisma.court.findUnique({
-                where: { id: courtId },
+                where: { id: courtIdNum },
                 select: {
                     id: true,
                     courtName: true,

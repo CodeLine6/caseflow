@@ -3,12 +3,15 @@ import { cookies } from 'next/headers'
 import { jwtVerify } from 'jose'
 import { getAdminById } from '@/lib/admin-auth'
 
-const JWT_SECRET = new TextEncoder().encode(process.env.NEXTAUTH_SECRET || 'admin-secret-key')
+if (!process.env.NEXTAUTH_SECRET) {
+    throw new Error('NEXTAUTH_SECRET environment variable is required')
+}
+const JWT_SECRET = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
 
 export async function GET() {
     try {
         const cookieStore = await cookies()
-        const token = (await cookieStore).get('admin-token')?.value
+        const token = cookieStore.get('admin-token')?.value
 
         if (!token) {
             return NextResponse.json({ admin: null }, { status: 200 })

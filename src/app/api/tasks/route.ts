@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requirePermission, isErrorResponse, filterWorkspacesByPermission } from '@/lib/rbac'
 
 // GET /api/tasks - List tasks
 export async function GET(request: Request) {
@@ -15,12 +16,21 @@ export async function GET(request: Request) {
         const caseId = searchParams.get('caseId')
         const status = searchParams.get('status')
         const assigneeId = searchParams.get('assigneeId')
+        const workspaceId = searchParams.get('workspaceId')
 
-        const memberships = await prisma.workspaceMember.findMany({
-            where: { userId: session.user.id },
-            select: { workspaceId: true },
-        })
-        const workspaceIds = memberships.map(m => m.workspaceId)
+        // Determine view scope from permissions:
+        // tasks.read    → view all tasks in workspace
+        // tasks.readOwn → view only tasks assigned to user
+        const [allWorkspaceIds, ownWorkspaceIds] = await Promise.all([
+            filterWorkspacesByPermission(session.user.id, 'tasks.read'),
+            filterWorkspacesByPermission(session.user.id, 'tasks.readOwn'),
+        ])
+        const hasViewAll = allWorkspaceIds.length > 0
+        const allowedWorkspaceIds = hasViewAll ? allWorkspaceIds : ownWorkspaceIds
+        if (allowedWorkspaceIds.length === 0) {
+            return NextResponse.json({ tasks: [] })
+        }
+        const workspaceIds = workspaceId && allowedWorkspaceIds.includes(workspaceId) ? [workspaceId] : allowedWorkspaceIds
 
         const whereClause: Record<string, unknown> = {
             workspaceId: { in: workspaceIds },
@@ -29,6 +39,11 @@ export async function GET(request: Request) {
         if (caseId) whereClause.caseId = caseId
         if (status) whereClause.status = status
         if (assigneeId) whereClause.assignedToId = assigneeId
+
+        // If user only has readOwn, scope to their assigned tasks
+        if (!hasViewAll && !assigneeId) {
+            whereClause.assignedToId = session.user.id
+        }
 
         const tasks = await prisma.task.findMany({
             where: whereClause,
@@ -97,12 +112,14 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
         }
 
-        const membership = await prisma.workspaceMember.findFirst({
-            where: { workspaceId, userId: session.user.id },
-        })
+        // Check RBAC permission
+        const rbac = await requirePermission(workspaceId, 'tasks.create')
+        if (isErrorResponse(rbac)) return rbac
 
-        if (!membership) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+        // If assigning task to someone, check tasks.assign
+        if (assigneeId) {
+            const assignRbac = await requirePermission(workspaceId, 'tasks.assign')
+            if (isErrorResponse(assignRbac)) return assignRbac
         }
 
         const task = await prisma.task.create({

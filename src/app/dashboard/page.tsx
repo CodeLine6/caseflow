@@ -1,5 +1,7 @@
 'use client'
 
+import { formatTime12h } from '@/lib/timezone'
+
 import { useEffect, useState } from 'react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,6 +20,7 @@ import {
     TrendingDown,
 } from 'lucide-react'
 import Link from 'next/link'
+import { PermissionGate } from '@/components/PermissionGate'
 
 interface DashboardStats {
     totalCases: number
@@ -71,15 +74,30 @@ export default function DashboardPage() {
     const [recentCases, setRecentCases] = useState<RecentCase[]>([])
     const [todayHearings, setTodayHearings] = useState<TodayHearing[]>([])
     const [loading, setLoading] = useState(true)
+    const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
+
+    // Read active workspace from localStorage (synced with sidebar selector)
+    useEffect(() => {
+        const stored = localStorage.getItem('activeWorkspaceId')
+        if (stored) setActiveWorkspaceId(stored)
+
+        const onWorkspaceChange = () => {
+            const updated = localStorage.getItem('activeWorkspaceId')
+            setActiveWorkspaceId(updated)
+        }
+        window.addEventListener('workspaceChanged', onWorkspaceChange)
+        return () => window.removeEventListener('workspaceChanged', onWorkspaceChange)
+    }, [])
 
     useEffect(() => {
         const loadDashboard = async () => {
             try {
+                const wsParam = activeWorkspaceId ? `?workspaceId=${activeWorkspaceId}` : ''
                 // Fetch stats with change percentages
                 const [statsRes, casesRes, hearingsRes] = await Promise.all([
-                    fetch('/api/stats'),
-                    fetch('/api/cases'),
-                    fetch('/api/hearings'),
+                    fetch(`/api/stats${wsParam}`),
+                    fetch(`/api/cases${wsParam}`),
+                    fetch(`/api/hearings${wsParam}`),
                 ])
 
                 const statsData = await statsRes.json()
@@ -115,24 +133,21 @@ export default function DashboardPage() {
                 setRecentCases(sortedCases)
 
                 // Filter today's hearings
-                const todayStart = new Date()
-                todayStart.setHours(0, 0, 0, 0)
-                const todayEnd = new Date()
-                todayEnd.setHours(23, 59, 59, 999)
-
                 const todaysHearings = hearings
                     .filter((h: { hearingDate: string }) => {
-                        const hearingDate = new Date(h.hearingDate)
-                        return hearingDate >= todayStart && hearingDate <= todayEnd
+                        // Convert hearing date to IST date string and compare with today's IST date
+                        const hearingDateIST = new Date(h.hearingDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+                        const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+                        return hearingDateIST === todayIST
                     })
-                    .map((h: { id: string; hearingDate: string; purpose: string; court: { courtName: string } | null; case: { id: string; title: string; caseNumber: string } }) => ({
+                    .map((h: { id: string; hearingDate: string; hearingTime?: string; courtNumber?: string; purpose: string; case: { id: string; title: string; caseNumber: string; court?: { courtName: string } | null } }) => ({
                         id: h.id,
-                        hearingTime: new Date(h.hearingDate).toLocaleTimeString('en-IN', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                        }),
+                        hearingTime: formatTime12h(h.hearingTime),
                         hearingType: h.purpose || 'HEARING',
-                        courtNumber: h.court?.courtName || 'TBD',
+                        courtNumber: [
+                            h.case.court?.courtName,
+                            h.courtNumber ? `Court ${h.courtNumber}` : null,
+                        ].filter(Boolean).join(', '),
                         case: {
                             id: h.case.id,
                             title: h.case.title,
@@ -148,7 +163,7 @@ export default function DashboardPage() {
         }
 
         loadDashboard()
-    }, [])
+    }, [activeWorkspaceId])
 
     const statCards = [
         {
@@ -218,12 +233,24 @@ export default function DashboardPage() {
                         <h1 className="text-3xl font-bold">Dashboard</h1>
                         <p className="text-muted-foreground mt-1">Welcome back! Here's what's happening today.</p>
                     </div>
-                    <Link href="/cases/new">
-                        <Button className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700">
-                            <Plus className="w-4 h-4" />
-                            New Case
-                        </Button>
-                    </Link>
+                    <div className="flex gap-2">
+                        <PermissionGate permission="tasks.create">
+                            <Link href="/tasks/new">
+                                <Button variant="outline" className="gap-2">
+                                    <Plus className="w-4 h-4" />
+                                    New Task
+                                </Button>
+                            </Link>
+                        </PermissionGate>
+                        <PermissionGate permission="cases.create">
+                            <Link href="/cases/new">
+                                <Button variant="gradient" className="gap-2">
+                                    <Plus className="w-4 h-4" />
+                                    New Case
+                                </Button>
+                            </Link>
+                        </PermissionGate>
+                    </div>
                 </div>
 
                 {/* Stats Grid */}
@@ -306,12 +333,14 @@ export default function DashboardPage() {
                                     <Briefcase className="w-12 h-12 text-muted-foreground/50 mb-3" />
                                     <p className="text-muted-foreground">No cases yet</p>
                                     <p className="text-sm text-muted-foreground/70 mt-1">Create your first case to get started</p>
-                                    <Link href="/cases/new" className="mt-4">
-                                        <Button size="sm" variant="outline" className="gap-1">
-                                            <Plus className="w-3 h-3" />
-                                            New Case
-                                        </Button>
-                                    </Link>
+                                    <PermissionGate permission="cases.create">
+                                        <Link href="/cases/new" className="mt-4">
+                                            <Button size="sm" variant="outline" className="gap-1">
+                                                <Plus className="w-3 h-3" />
+                                                New Case
+                                            </Button>
+                                        </Link>
+                                    </PermissionGate>
                                 </div>
                             )}
                         </CardContent>

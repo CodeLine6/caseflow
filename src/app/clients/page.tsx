@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { PermissionGate } from '@/components/PermissionGate'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 
@@ -36,6 +37,8 @@ export default function ClientsPage() {
         try {
             setLoading(true)
             const params = new URLSearchParams()
+            const wsId = localStorage.getItem('activeWorkspaceId')
+            if (wsId) params.append('workspaceId', wsId)
             if (search) params.append('search', search)
 
             const res = await fetch(`/api/clients?${params.toString()}`)
@@ -83,13 +86,16 @@ export default function ClientsPage() {
                         <p className="text-muted-foreground mt-1">Manage your clients and contacts</p>
                     </div>
                 </div>
-                <Button
-                    className="bg-gradient-to-r from-primary to-accent text-white gap-2"
-                    onClick={() => router.push('/clients/new')}
-                >
-                    <Plus className="w-4 h-4" />
-                    Add Client
-                </Button>
+                <PermissionGate permission="clients.create">
+                    <Button
+                        className="gap-2"
+                        variant="gradient"
+                        onClick={() => router.push('/clients/new')}
+                    >
+                        <Plus className="w-4 h-4" />
+                        Add Client
+                    </Button>
+                </PermissionGate>
             </div>
 
             {/* Stats */}
@@ -174,7 +180,8 @@ export default function ClientsPage() {
                         <h3 className="text-xl font-semibold mb-2">No clients found</h3>
                         <p className="text-muted-foreground mb-6">Get started by adding your first client.</p>
                         <Button
-                            className="bg-gradient-to-r from-primary to-accent text-white gap-2"
+                            className="gap-2"
+                            variant="gradient"
                             onClick={() => router.push('/clients/new')}
                         >
                             <Plus className="w-4 h-4" />

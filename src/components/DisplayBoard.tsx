@@ -107,12 +107,18 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
         fetchDisplayBoard()
     }, [fetchDisplayBoard])
 
+    // Use a ref for userHearings so the socket effect doesn't re-run on every update
+    const userHearingsRef = useRef<UserHearing[]>([])
+    useEffect(() => { userHearingsRef.current = userHearings }, [userHearings])
+
+    // Derive a stable dependency from court IDs
+    const courtIdsKey = [...new Set(userHearings.map(h => h.courtId))].sort().join(',')
+
     // Connect to Socket.io for real-time updates
     useEffect(() => {
-        if (userHearings.length === 0) return
+        if (!courtIdsKey) return
 
-        // Get unique court IDs
-        const courtIds = [...new Set(userHearings.map(h => h.courtId))]
+        const courtIds = courtIdsKey.split(',').map(Number)
 
         // Connect to scraper service
         const socket = io(SCRAPER_URL, {
@@ -139,7 +145,7 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
             setDisplayData(prev => ({
                 ...prev,
                 [data.courtId]: data.entries.filter(d =>
-                    userHearings.some(c => c.courtId == data.courtId && c.courtNumber === d.courtNumber)
+                    userHearingsRef.current.some(c => c.courtId == data.courtId && c.courtNumber === d.courtNumber)
                 ).map(e => ({
                     ...e,
                     lastUpdated: data.timestamp,
@@ -160,7 +166,7 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
         return () => {
             socket.disconnect()
         }
-    }, [userHearings])
+    }, [courtIdsKey])
 
     const getStatusColor = (status: string | null) => {
         if (!status) return 'bg-gray-500/10 text-gray-500'
@@ -339,7 +345,7 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
                                         </div>
                                         <div className="text-right space-y-2">
                                             <Badge className={getStatusColor(entry.status)}>
-                                                {entry.status || 'Unknown'}
+                                                {(entry.status || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                                             </Badge>
                                             {entry.lastUpdated && (
                                                 <p className="text-xs text-muted-foreground">

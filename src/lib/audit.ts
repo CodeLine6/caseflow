@@ -50,7 +50,7 @@ export async function createAuditLog({
                 entityId,
                 userId,
                 workspaceId,
-                metadata: metadata ?? undefined,
+                metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : undefined,
                 ipAddress,
                 userAgent,
             },

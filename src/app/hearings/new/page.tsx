@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { MultiSelect } from '@/components/ui/multi-select'
+import { TimePicker12h } from '@/components/ui/time-picker-12h'
 
 type Case = {
     id: string
@@ -148,10 +149,9 @@ export default function NewHearingPage() {
         try {
             setLoading(true)
 
-            // Combine date and time
-            const hearingDateTime = formData.hearingTime
-                ? `${formData.hearingDate}T${formData.hearingTime}`
-                : `${formData.hearingDate}T10:00`
+            // Store hearingDate at IST noon to prevent UTC day-boundary crossing
+            // The actual time is stored separately in hearingTime text field
+            const hearingDateTime = `${formData.hearingDate}T12:00:00+05:30`
 
             const res = await fetch('/api/hearings', {
                 method: 'POST',
@@ -293,11 +293,9 @@ export default function NewHearingPage() {
                                         <Clock className="w-4 h-4" />
                                         Time
                                     </Label>
-                                    <Input
-                                        id="hearingTime"
-                                        type="time"
+                                    <TimePicker12h
                                         value={formData.hearingTime}
-                                        onChange={(e) => handleChange('hearingTime', e.target.value)}
+                                        onChange={(val) => handleChange('hearingTime', val)}
                                     />
                                 </div>
                             </div>

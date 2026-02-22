@@ -34,22 +34,21 @@ interface NavItem {
     href: string
     label: string
     icon: React.ElementType
-    permission?: string
+    permission?: string | string[]
 }
 
 const navItems: NavItem[] = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/cause-list', label: 'Cause List', icon: Scale },
-    { href: '/cases', label: 'Cases', icon: Briefcase },
-    { href: '/hearings', label: 'Hearings', icon: Calendar },
-    { href: '/clients', label: 'Clients', icon: Users },
-    { href: '/tasks', label: 'Tasks', icon: CheckSquare },
-    { href: '/documents', label: 'Documents', icon: FileText },
+    { href: '/cause-list', label: 'Cause List', icon: Scale, permission: ['hearings.read', 'hearings.readOwn'] },
+    { href: '/cases', label: 'Cases', icon: Briefcase, permission: ['cases.read', 'cases.readOwn'] },
+    { href: '/hearings', label: 'Hearings', icon: Calendar, permission: ['hearings.read', 'hearings.readOwn'] },
+    { href: '/clients', label: 'Clients', icon: Users, permission: 'clients.read' },
+    { href: '/tasks', label: 'Tasks', icon: CheckSquare, permission: ['tasks.read', 'tasks.readOwn'] },
+    { href: '/documents', label: 'Documents', icon: FileText, permission: 'documents.read' },
     { href: '/courts', label: 'Courts', icon: Building2 },
     { href: '/display-boards', label: 'Display Boards', icon: Monitor },
     { href: '/workspaces', label: 'Workspaces', icon: Settings2 },
     { href: '/reports', label: 'Reports', icon: BarChart3, permission: 'reports.view' },
-    { href: '/settings', label: 'Settings', icon: Settings, permission: 'workspace.manage' },
 ]
 
 export default function Sidebar({ collapsed = false, onCollapse }: SidebarProps) {
@@ -77,6 +76,7 @@ export default function Sidebar({ collapsed = false, onCollapse }: SidebarProps)
                         if (!activeWorkspaceId && data.workspaces?.length > 0) {
                             setActiveWorkspaceId(data.workspaces[0].id)
                             localStorage.setItem('activeWorkspaceId', data.workspaces[0].id)
+                            window.dispatchEvent(new Event('workspaceChanged'))
                         }
                     }
                 } catch (error) {
@@ -94,6 +94,7 @@ export default function Sidebar({ collapsed = false, onCollapse }: SidebarProps)
         } else {
             setActiveWorkspaceId(id)
             localStorage.setItem('activeWorkspaceId', id)
+            window.dispatchEvent(new Event('workspaceChanged'))
             window.location.reload()
         }
     }
@@ -101,6 +102,9 @@ export default function Sidebar({ collapsed = false, onCollapse }: SidebarProps)
     const filteredNavItems = navItems.filter((item) => {
         if (!item.permission) return true
         if (loading) return false
+        if (Array.isArray(item.permission)) {
+            return item.permission.some(p => can(p as any))
+        }
         return can(item.permission as any)
     })
 
@@ -139,7 +143,7 @@ export default function Sidebar({ collapsed = false, onCollapse }: SidebarProps)
                         <div className="overflow-hidden">
                             <p className="font-medium text-sm truncate">{session.user.name}</p>
                             <p className="text-xs text-muted-foreground truncate">
-                                {loading ? 'Loading...' : (role || 'Member')}
+                                {loading ? 'Loading...' : (role ? role.charAt(0) + role.slice(1).toLowerCase() : 'Member')}
                             </p>
                         </div>
                     </div>

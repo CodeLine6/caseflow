@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requirePermission, isErrorResponse } from '@/lib/rbac'
 import { Prisma } from '@prisma/client'
 
 // GET /api/hearings/[id] - Get hearing details
@@ -48,17 +49,9 @@ export async function GET(
             return NextResponse.json({ error: 'Hearing not found' }, { status: 404 })
         }
 
-        // Verify workspace membership
-        const membership = await prisma.workspaceMember.findFirst({
-            where: {
-                workspaceId: hearing.case.workspaceId,
-                userId: session.user.id,
-            },
-        })
-
-        if (!membership) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-        }
+        // Check hearings.read permission
+        const rbac = await requirePermission(hearing.case.workspaceId, 'hearings.read')
+        if (isErrorResponse(rbac)) return rbac
 
         return NextResponse.json({ hearing })
     } catch (error) {
@@ -109,16 +102,14 @@ export async function PUT(
             return NextResponse.json({ error: 'Hearing not found' }, { status: 404 })
         }
 
-        // Verify workspace membership
-        const membership = await prisma.workspaceMember.findFirst({
-            where: {
-                workspaceId: hearing.case.workspaceId,
-                userId: session.user.id,
-            },
-        })
+        // Check RBAC permission
+        const rbac = await requirePermission(hearing.case.workspaceId, 'hearings.update')
+        if (isErrorResponse(rbac)) return rbac
 
-        if (!membership) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+        // If changing hearing date, also check hearings.schedule
+        if (hearingDate) {
+            const scheduleRbac = await requirePermission(hearing.case.workspaceId, 'hearings.schedule')
+            if (isErrorResponse(scheduleRbac)) return scheduleRbac
         }
 
         // Build update data
@@ -166,21 +157,23 @@ export async function PUT(
             }
         })
 
-        // Handle accompaniedByIds — delete old, create new
+        // Handle accompaniedByIds — delete old, create new (in transaction)
         if (accompaniedByIds !== undefined) {
-            await prisma.hearingAttendance.deleteMany({
-                where: { hearingId: id }
-            })
-
-            if (accompaniedByIds.length > 0) {
-                await prisma.hearingAttendance.createMany({
-                    data: accompaniedByIds.map((memberId: string) => ({
-                        hearingId: id,
-                        memberId,
-                        attended: false,
-                    }))
+            await prisma.$transaction(async (tx) => {
+                await tx.hearingAttendance.deleteMany({
+                    where: { hearingId: id }
                 })
-            }
+
+                if (accompaniedByIds.length > 0) {
+                    await tx.hearingAttendance.createMany({
+                        data: accompaniedByIds.map((memberId: string) => ({
+                            hearingId: id,
+                            memberId,
+                            attended: false,
+                        }))
+                    })
+                }
+            })
         }
 
         // Handle nextDateOfHearing — auto-create follow-up hearing
@@ -188,7 +181,7 @@ export async function PUT(
             await prisma.hearing.create({
                 data: {
                     caseId: updatedHearing.caseId,
-                    hearingDate: new Date(nextDateOfHearing),
+                    hearingDate: new Date(`${nextDateOfHearing}T12:00:00+05:30`),
                     hearingTime: updatedHearing.hearingTime,
                     hearingType: updatedHearing.hearingType,
                     judgeName: updatedHearing.judgeName,
@@ -234,17 +227,9 @@ export async function DELETE(
             return NextResponse.json({ error: 'Hearing not found' }, { status: 404 })
         }
 
-        // Verify workspace membership
-        const membership = await prisma.workspaceMember.findFirst({
-            where: {
-                workspaceId: hearing.case.workspaceId,
-                userId: session.user.id,
-            },
-        })
-
-        if (!membership) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-        }
+        // Check RBAC permission (only ADMIN/MANAGER have hearings.delete by default)
+        const rbac = await requirePermission(hearing.case.workspaceId, 'hearings.delete')
+        if (isErrorResponse(rbac)) return rbac
 
         await prisma.hearing.delete({ where: { id } })
 

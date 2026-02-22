@@ -30,12 +30,7 @@ export default function AdminDashboardPage() {
             setStats(data)
         } catch (error) {
             console.error('Failed to fetch stats:', error)
-            // Set to zero on error
-            setStats({
-                totalCourts: 0,
-                totalUsers: 0,
-                courtsWithDisplayBoards: 0,
-            })
+            setStats(null)
         } finally {
             setLoading(false)
         }
@@ -45,6 +40,22 @@ export default function AdminDashboardPage() {
         return (
             <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+            </div>
+        )
+    }
+    if (!stats) {
+        return (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+                <div className="text-red-500 text-center">
+                    <p className="font-semibold">Failed to load dashboard statistics</p>
+                    <p className="text-sm text-muted-foreground mt-1">Please check your connection and try again</p>
+                </div>
+                <button
+                    onClick={() => { setLoading(true); fetchStats() }}
+                    className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
+                >
+                    Retry
+                </button>
             </div>
         )
     }

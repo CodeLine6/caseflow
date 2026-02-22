@@ -89,36 +89,75 @@ export async function POST(request: Request) {
             counter++
         }
 
-        // Create workspace and add user as admin
-        const workspace = await prisma.workspace.create({
-            data: {
-                name,
-                slug,
-                description: description || null,
-                ownerId: session.user.id,
-                members: {
-                    create: {
-                        userId: session.user.id,
-                        role: 'ADMIN',
+        // Create workspace with race condition handling on slug
+        let workspace
+        try {
+            workspace = await prisma.workspace.create({
+                data: {
+                    name,
+                    slug,
+                    description: description || null,
+                    ownerId: session.user.id,
+                    members: {
+                        create: {
+                            userId: session.user.id,
+                            role: 'ADMIN',
+                        },
                     },
                 },
-            },
-            include: {
-                owner: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
+                include: {
+                    owner: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                        },
+                    },
+                    _count: {
+                        select: {
+                            cases: true,
+                            members: true,
+                        },
                     },
                 },
-                _count: {
-                    select: {
-                        cases: true,
-                        members: true,
+            })
+        } catch (e: unknown) {
+            // Handle slug race condition (P2002 = unique constraint violation)
+            if (e && typeof e === 'object' && 'code' in e && e.code === 'P2002') {
+                slug = `${baseSlug}-${Date.now()}`
+                workspace = await prisma.workspace.create({
+                    data: {
+                        name,
+                        slug,
+                        description: description || null,
+                        ownerId: session.user.id,
+                        members: {
+                            create: {
+                                userId: session.user.id,
+                                role: 'ADMIN',
+                            },
+                        },
                     },
-                },
-            },
-        })
+                    include: {
+                        owner: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true,
+                            },
+                        },
+                        _count: {
+                            select: {
+                                cases: true,
+                                members: true,
+                            },
+                        },
+                    },
+                })
+            } else {
+                throw e
+            }
+        }
 
         // Set as default workspace if user doesn't have one
         const user = await prisma.user.findUnique({

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requirePermission, isErrorResponse, filterWorkspacesByPermission } from '@/lib/rbac'
+import { uploadToStorage, STORAGE_BUCKET } from '@/lib/supabase'
 import { DocumentCategory } from '@prisma/client'
 
 // GET /api/documents - List documents
@@ -16,14 +18,11 @@ export async function GET(request: Request) {
         const caseId = searchParams.get('caseId')
         const search = searchParams.get('search')
 
-        const memberships = await prisma.workspaceMember.findMany({
-            where: { userId: session.user.id },
-            select: { workspaceId: true },
-        })
-        const workspaceIds = memberships.map(m => m.workspaceId)
+        // Filter to workspaces where user has documents.read permission
+        const allowedWorkspaceIds = await filterWorkspacesByPermission(session.user.id, 'documents.read')
 
         const whereClause: Record<string, unknown> = {
-            case: { workspaceId: { in: workspaceIds } },
+            case: { workspaceId: { in: allowedWorkspaceIds } },
         }
 
         if (caseId) whereClause.caseId = caseId
@@ -43,7 +42,6 @@ export async function GET(request: Request) {
             orderBy: { createdAt: 'desc' },
         })
 
-        // Map to expected format for frontend
         const mappedDocuments = documents.map(d => ({
             ...d,
             fileName: d.originalName || d.filename,
@@ -60,7 +58,7 @@ export async function GET(request: Request) {
     }
 }
 
-// POST /api/documents - Create document record (file upload handled separately)
+// POST /api/documents - Upload a file to Supabase Storage and create DB record
 export async function POST(request: Request) {
     try {
         const session = await getServerSession(authOptions)
@@ -68,13 +66,17 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const body = await request.json()
-        const { caseId, fileName, fileType, fileSize, filePath, category } = body
+        // Parse multipart form data
+        const formData = await request.formData()
+        const file = formData.get('file') as File | null
+        const caseId = formData.get('caseId') as string | null
+        const category = formData.get('category') as string | null
 
-        if (!caseId || !fileName || !filePath) {
-            return NextResponse.json({ error: 'Case ID, file name, and file path are required' }, { status: 400 })
+        if (!file || !caseId) {
+            return NextResponse.json({ error: 'File and case ID are required' }, { status: 400 })
         }
 
+        // Validate case exists and get workspace
         const caseData = await prisma.case.findUnique({
             where: { id: caseId },
             select: { workspaceId: true },
@@ -84,31 +86,45 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Case not found' }, { status: 404 })
         }
 
-        const membership = await prisma.workspaceMember.findFirst({
-            where: { workspaceId: caseData.workspaceId, userId: session.user.id },
-        })
+        // Check RBAC permission
+        const rbac = await requirePermission(caseData.workspaceId, 'documents.upload')
+        if (isErrorResponse(rbac)) return rbac
 
-        if (!membership) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-        }
+        // Read file into buffer
+        const arrayBuffer = await file.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
 
+        // Build a unique storage path: workspaceId/caseId/timestamp_filename
+        const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const storagePath = `${caseData.workspaceId}/${caseId}/${Date.now()}_${sanitizedName}`
+
+        // Upload to Supabase Storage
+        await uploadToStorage(buffer, storagePath, file.type || 'application/octet-stream')
+
+        // Construct the storage URL (path only — we generate signed URLs on download)
+        const fileUrl = `${STORAGE_BUCKET}/${storagePath}`
+
+        // Save document record to DB
         const document = await prisma.document.create({
             data: {
-                filename: fileName.replace(/\s+/g, '_').toLowerCase(),
-                originalName: fileName,
-                fileUrl: filePath,
-                mimeType: fileType || 'application/octet-stream',
-                fileSize: fileSize || 0,
+                filename: sanitizedName,
+                originalName: file.name,
+                fileUrl,
+                mimeType: file.type || 'application/octet-stream',
+                fileSize: file.size,
                 documentType: (category as DocumentCategory) || 'OTHER',
                 caseId,
                 uploadedById: session.user.id,
             },
-            include: { case: true, uploadedBy: true },
+            include: {
+                case: { select: { id: true, title: true, caseNumber: true } },
+                uploadedBy: { select: { id: true, name: true } },
+            },
         })
 
         return NextResponse.json(document, { status: 201 })
     } catch (error) {
-        console.error('Error creating document:', error)
-        return NextResponse.json({ error: 'Failed to create document' }, { status: 500 })
+        console.error('Error uploading document:', error)
+        return NextResponse.json({ error: 'Failed to upload document' }, { status: 500 })
     }
 }

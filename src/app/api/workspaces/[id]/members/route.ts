@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { requirePermission, isErrorResponse } from '@/lib/rbac'
 
 // GET /api/workspaces/[id]/members - List members
 export async function GET(
@@ -16,6 +17,15 @@ export async function GET(
 
         const { id } = await params
 
+        // Verify requesting user is a member of this workspace
+        const requestingMember = await prisma.workspaceMember.findFirst({
+            where: { workspaceId: id, userId: session.user.id },
+        })
+
+        if (!requestingMember) {
+            return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+        }
+
         const members = await prisma.workspaceMember.findMany({
             where: { workspaceId: id },
             include: {
@@ -27,11 +37,23 @@ export async function GET(
                         avatar: true,
                     },
                 },
+                customPermissions: {
+                    select: { action: true, granted: true },
+                },
             },
             orderBy: { createdAt: 'asc' },
         })
 
-        return NextResponse.json({ members })
+        const workspace = await prisma.workspace.findUnique({
+            where: { id },
+            select: { name: true, ownerId: true },
+        })
+
+        return NextResponse.json({
+            members,
+            workspaceName: workspace?.name,
+            ownerId: workspace?.ownerId,
+        })
     } catch (error) {
         console.error('Failed to fetch members:', error)
         return NextResponse.json(
@@ -60,28 +82,13 @@ export async function POST(
             return NextResponse.json({ error: 'Email is required' }, { status: 400 })
         }
 
-        // Check if user can manage members
-        const workspace = await prisma.workspace.findUnique({
-            where: { id },
-            include: {
-                members: {
-                    where: { userId: session.user.id },
-                },
-            },
-        })
+        // Check RBAC permission
+        const rbac = await requirePermission(id, 'workspace.invite')
+        if (isErrorResponse(rbac)) return rbac
 
-        if (!workspace) {
-            return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
-        }
-
-        const currentUserMember = workspace.members[0]
-        const isOwner = workspace.ownerId === session.user.id
-        const canInvite = isOwner ||
-            currentUserMember?.role === 'ADMIN' ||
-            currentUserMember?.role === 'MANAGER'
-
-        if (!canInvite) {
-            return NextResponse.json({ error: 'Not authorized to invite members' }, { status: 403 })
+        // ADMIN role is reserved for the workspace owner
+        if (role === 'ADMIN') {
+            return NextResponse.json({ error: 'ADMIN role is reserved for the workspace owner' }, { status: 400 })
         }
 
         // Find the user to invite

@@ -1,5 +1,7 @@
 'use client'
 
+import { formatTime12h } from '@/lib/timezone'
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -9,6 +11,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { PermissionGate } from '@/components/PermissionGate'
 
 type Hearing = {
     id: string
@@ -75,6 +78,8 @@ export default function HearingsPage() {
         try {
             setLoading(true)
             const params = new URLSearchParams()
+            const wsId = localStorage.getItem('activeWorkspaceId')
+            if (wsId) params.append('workspaceId', wsId)
             if (showUpcoming) params.append('upcoming', 'true')
 
             const res = await fetch(`/api/hearings?${params.toString()}`)
@@ -94,6 +99,7 @@ export default function HearingsPage() {
             day: '2-digit',
             month: 'short',
             year: 'numeric',
+            timeZone: 'Asia/Kolkata',
         })
     }
 
@@ -101,6 +107,7 @@ export default function HearingsPage() {
         return new Date(date).toLocaleTimeString('en-IN', {
             hour: '2-digit',
             minute: '2-digit',
+            timeZone: 'Asia/Kolkata',
         })
     }
 
@@ -139,7 +146,7 @@ export default function HearingsPage() {
                         <p className="text-muted-foreground mt-1">Track all your court hearings</p>
                     </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                     <Button
                         variant={showUpcoming ? 'default' : 'outline'}
                         onClick={() => setShowUpcoming(true)}
@@ -152,15 +159,17 @@ export default function HearingsPage() {
                         onClick={() => setShowUpcoming(false)}
                         size="sm"
                     >
-                        All
+                        All Dates
                     </Button>
-                    <Button
-                        onClick={() => router.push('/hearings/new')}
-                        size="sm"
-                    >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Schedule Hearing
-                    </Button>
+                    <PermissionGate permission="hearings.create">
+                        <Button
+                            onClick={() => router.push('/hearings/new')}
+                            size="sm"
+                        >
+                            <Plus className="w-4 h-4 mr-1" />
+                            Schedule Hearing
+                        </Button>
+                    </PermissionGate>
                 </div>
             </div>
 
@@ -265,7 +274,7 @@ export default function HearingsPage() {
                                                 <div className="flex items-start gap-4">
                                                     <div className="w-16 text-center flex-shrink-0">
                                                         <p className="text-lg font-bold text-primary">
-                                                            {hearing.hearingTime || formatTime(hearing.hearingDate)}
+                                                            {formatTime12h(hearing.hearingTime) || formatTime(hearing.hearingDate)}
                                                         </p>
                                                         <Badge variant="outline" className="text-[10px] mt-1">
                                                             {typeLabels[hearing.hearingType] || hearing.hearingType}

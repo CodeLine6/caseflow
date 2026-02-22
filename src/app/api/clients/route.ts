@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requirePermission, isErrorResponse, filterWorkspacesByPermission } from '@/lib/rbac'
 import { ClientType } from '@prisma/client'
 
 // GET /api/clients - List all clients
@@ -17,16 +18,13 @@ export async function GET(request: Request) {
         const workspaceId = searchParams.get('workspaceId')
         const search = searchParams.get('search')
 
-        // Get user's workspaces
-        const memberships = await prisma.workspaceMember.findMany({
-            where: { userId: session.user.id },
-            select: { workspaceId: true },
-        })
-
-        const workspaceIds = memberships.map(m => m.workspaceId)
+        // Filter to workspaces where user has clients.read permission
+        const allowedWorkspaceIds = await filterWorkspacesByPermission(session.user.id, 'clients.read')
 
         const whereClause: Record<string, unknown> = {
-            workspaceId: workspaceId ? workspaceId : { in: workspaceIds },
+            workspaceId: workspaceId && allowedWorkspaceIds.includes(workspaceId)
+                ? workspaceId
+                : { in: allowedWorkspaceIds },
         }
 
         if (search) {
@@ -48,6 +46,7 @@ export async function GET(request: Request) {
         const mappedClients = clients.map(c => ({
             ...c,
             phone: c.contactNumber,
+            alternateNumber: c.alternateNumber,
         }))
 
         return NextResponse.json({ clients: mappedClients })
@@ -67,26 +66,22 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json()
-        const { workspaceId, name, email, phone, address, contactPerson, clientType, notes } = body
+        const { workspaceId, name, email, phone, alternateNumber, address, contactPerson, clientType, notes } = body
 
         if (!workspaceId || !name) {
             return NextResponse.json({ error: 'Workspace ID and name are required' }, { status: 400 })
         }
 
-        // Check workspace access
-        const membership = await prisma.workspaceMember.findFirst({
-            where: { workspaceId, userId: session.user.id },
-        })
-
-        if (!membership) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-        }
+        // Check RBAC permission
+        const rbac = await requirePermission(workspaceId, 'clients.create')
+        if (isErrorResponse(rbac)) return rbac
 
         const client = await prisma.client.create({
             data: {
                 name,
                 email,
                 contactNumber: phone,
+                alternateNumber,
                 address,
                 company: contactPerson, // Using company field for contact person
                 clientType: (clientType as ClientType) || 'INDIVIDUAL',

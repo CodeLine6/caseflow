@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
     CheckSquare, Clock, AlertCircle, CheckCircle,
-    Briefcase, User, Loader2, Circle, ArrowLeft
+    Briefcase, User, Loader2, Circle, ArrowLeft, Plus
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { PermissionGate } from '@/components/PermissionGate'
 import { Badge } from '@/components/ui/badge'
 
 type Task = {
@@ -51,6 +52,8 @@ export default function TasksPage() {
         try {
             setLoading(true)
             const params = new URLSearchParams()
+            const wsId = localStorage.getItem('activeWorkspaceId')
+            if (wsId) params.append('workspaceId', wsId)
             if (statusFilter) params.append('status', statusFilter)
 
             const res = await fetch(`/api/tasks?${params.toString()}`)
@@ -68,6 +71,7 @@ export default function TasksPage() {
         return new Date(date).toLocaleDateString('en-IN', {
             day: '2-digit',
             month: 'short',
+            timeZone: 'Asia/Kolkata',
         })
     }
 
@@ -110,7 +114,25 @@ export default function TasksPage() {
                         <p className="text-muted-foreground mt-1">Manage your tasks and assignments</p>
                     </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
+                    <div className="flex rounded-lg border border-border overflow-hidden">
+                        <Button
+                            variant={scope === 'all' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setScope('all')}
+                            className="rounded-none"
+                        >
+                            All
+                        </Button>
+                        <Button
+                            variant={scope === 'mine' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setScope('mine')}
+                            className="rounded-none"
+                        >
+                            Mine
+                        </Button>
+                    </div>
                     <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
@@ -122,6 +144,12 @@ export default function TasksPage() {
                         <option value="UNDER_REVIEW">Under Review</option>
                         <option value="COMPLETED">Completed</option>
                     </select>
+                    <PermissionGate permission="tasks.create">
+                        <Button variant="gradient" onClick={() => router.push('/tasks/new')} className="gap-2">
+                            <Plus className="w-4 h-4" />
+                            New Task
+                        </Button>
+                    </PermissionGate>
                 </div>
             </div>
 

@@ -49,18 +49,18 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const { userId, type, title, message, link } = await request.json()
+        const { type, title, message, link } = await request.json()
 
-        if (!userId || !type || !title || !message) {
+        if (!type || !title || !message) {
             return NextResponse.json(
-                { error: 'userId, type, title, and message are required' },
+                { error: 'type, title, and message are required' },
                 { status: 400 }
             )
         }
 
         const notification = await prisma.notification.create({
             data: {
-                userId,
+                userId: session.user.id,
                 type,
                 title,
                 message,

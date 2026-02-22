@@ -22,5 +22,17 @@ export const config = {
         '/settings/:path*',
         '/workspaces/:path*',
         '/cause-list/:path*',
+        '/display-boards/:path*',
+        // API routes (excluding auth callbacks and admin)
+        '/api/cases/:path*',
+        '/api/clients/:path*',
+        '/api/hearings/:path*',
+        '/api/documents/:path*',
+        '/api/tasks/:path*',
+        '/api/workspaces/:path*',
+        '/api/notifications/:path*',
+        '/api/cause-list/:path*',
+        '/api/display-board/:path*',
+        '/api/custom-case-values/:path*',
     ],
 }

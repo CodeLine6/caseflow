@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requirePermission, isErrorResponse, filterWorkspacesByPermission } from '@/lib/rbac'
 import { HearingType } from '@prisma/client'
+import { getISTStartOfDay } from '@/lib/timezone'
 
 // GET /api/hearings - List hearings
 export async function GET(request: Request) {
@@ -15,12 +17,21 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url)
         const caseId = searchParams.get('caseId')
         const upcoming = searchParams.get('upcoming')
+        const workspaceId = searchParams.get('workspaceId')
 
-        const memberships = await prisma.workspaceMember.findMany({
-            where: { userId: session.user.id },
-            select: { workspaceId: true },
-        })
-        const workspaceIds = memberships.map(m => m.workspaceId)
+        // Determine view scope from permissions:
+        // hearings.read    → view all hearings in workspace
+        // hearings.readOwn → view only hearings user is associated with
+        const [allWorkspaceIds, ownWorkspaceIds] = await Promise.all([
+            filterWorkspacesByPermission(session.user.id, 'hearings.read'),
+            filterWorkspacesByPermission(session.user.id, 'hearings.readOwn'),
+        ])
+        const hasViewAll = allWorkspaceIds.length > 0
+        const allowedWorkspaceIds = hasViewAll ? allWorkspaceIds : ownWorkspaceIds
+        if (allowedWorkspaceIds.length === 0) {
+            return NextResponse.json({ hearings: [] })
+        }
+        const workspaceIds = workspaceId && allowedWorkspaceIds.includes(workspaceId) ? [workspaceId] : allowedWorkspaceIds
 
         const whereClause: Record<string, unknown> = {
             case: { workspaceId: { in: workspaceIds } },
@@ -28,7 +39,16 @@ export async function GET(request: Request) {
 
         if (caseId) whereClause.caseId = caseId
         if (upcoming === 'true') {
-            whereClause.hearingDate = { gte: new Date() }
+            whereClause.hearingDate = { gte: getISTStartOfDay() }
+        }
+
+        // If user only has readOwn, scope to hearings they are associated with
+        if (!hasViewAll) {
+            whereClause.OR = [
+                { hearingCounsel: { userId: session.user.id } },
+                { attendance: { some: { member: { userId: session.user.id } } } },
+                { case: { mainCounselId: session.user.id } },
+            ]
         }
 
         const hearings = await prisma.hearing.findMany({
@@ -103,18 +123,14 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Case not found' }, { status: 404 })
         }
 
-        const membership = await prisma.workspaceMember.findFirst({
-            where: { workspaceId: caseData.workspaceId, userId: session.user.id },
-        })
-
-        if (!membership) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-        }
+        // Check RBAC permission
+        const rbac = await requirePermission(caseData.workspaceId, 'hearings.create')
+        if (isErrorResponse(rbac)) return rbac
 
         const hearing = await prisma.hearing.create({
             data: {
                 caseId,
-                hearingDate: new Date(hearingDate),
+                hearingDate: new Date(hearingDate), // already includes +05:30 from frontend
                 hearingTime: hearingTime || null,
                 hearingType: (hearingType as HearingType) || 'OTHER',
                 description: purpose,
@@ -156,7 +172,7 @@ export async function POST(request: Request) {
             await prisma.hearing.create({
                 data: {
                     caseId,
-                    hearingDate: new Date(nextDateOfHearing),
+                    hearingDate: new Date(`${nextDateOfHearing}T12:00:00+05:30`),
                     hearingTime: hearing.hearingTime,
                     hearingType: hearing.hearingType,
                     judgeName: hearing.judgeName,

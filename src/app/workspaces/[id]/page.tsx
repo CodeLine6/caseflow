@@ -25,8 +25,14 @@ import {
     X,
     AlertTriangle,
     Save,
+    ChevronDown,
+    ChevronRight,
+    Loader2,
 } from 'lucide-react'
 import { useSession } from 'next-auth/react'
+import { usePermissions } from '@/hooks/usePermissions'
+import { PERMISSIONS, PERMISSION_GROUPS, ROLE_PERMISSIONS, TRI_STATE_PERMISSIONS } from '@/lib/permissions'
+import type { Permission } from '@/lib/permissions'
 
 interface Member {
     id: string
@@ -38,6 +44,7 @@ interface Member {
         email: string
         avatar: string | null
     }
+    customPermissions: { action: string; granted: boolean }[]
     createdAt: string
 }
 
@@ -70,7 +77,7 @@ const ROLE_COLORS: Record<string, string> = {
     INTERN: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
 }
 
-const ROLES = ['ADMIN', 'MANAGER', 'MEMBER', 'ASSISTANT', 'INTERN'] as const
+const ROLES = ['MANAGER', 'MEMBER', 'ASSISTANT', 'INTERN'] as const
 
 export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
@@ -99,7 +106,15 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
 
     const isOwner = workspace?.ownerId === session?.user?.id
     const currentMember = workspace?.members.find(m => m.userId === session?.user?.id)
-    const canManageMembers = isOwner || currentMember?.role === 'ADMIN' || currentMember?.role === 'MANAGER'
+    const { can } = usePermissions()
+    const canManageMembers = can('workspace.members') || isOwner
+    const canManageSettings = can('workspace.manage') || isOwner
+    const canInvite = can('workspace.invite') || canManageMembers
+
+    // Custom permission overrides state
+    const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null)
+    const [pendingPerms, setPendingPerms] = useState<Record<string, { action: string; granted: boolean }[]>>({})
+    const [savingPerms, setSavingPerms] = useState<string | null>(null)
 
     useEffect(() => {
         fetchWorkspace()
@@ -302,10 +317,11 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
                             </div>
                         </div>
                     </div>
-                    {canManageMembers && (
+                    {canInvite && (
                         <Button
                             onClick={() => setShowInviteModal(true)}
-                            className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-600"
+                            className="gap-2"
+                            variant="gradient"
                         >
                             <UserPlus className="w-4 h-4" />
                             Invite Member
@@ -315,20 +331,26 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
 
                 {/* Tabs */}
                 <div className="flex gap-2 border-b border-border pb-2">
-                    {(['overview', 'members', 'settings'] as const).map((tab) => (
-                        <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab)}
-                            className={cn(
-                                "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                                activeTab === tab
-                                    ? "bg-primary text-primary-foreground"
-                                    : "text-muted-foreground hover:bg-secondary"
-                            )}
-                        >
-                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                        </button>
-                    ))}
+                    {(['overview', 'members', 'settings'] as const)
+                        .filter((tab) => {
+                            if (tab === 'members') return canManageMembers
+                            if (tab === 'settings') return canManageSettings
+                            return true
+                        })
+                        .map((tab) => (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab)}
+                                className={cn(
+                                    "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                                    activeTab === tab
+                                        ? "bg-primary text-primary-foreground"
+                                        : "text-muted-foreground hover:bg-secondary"
+                                )}
+                            >
+                                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                            </button>
+                        ))}
                 </div>
 
                 {/* Tab Content */}
@@ -392,6 +414,7 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
                                                 year: 'numeric',
                                                 month: 'long',
                                                 day: 'numeric',
+                                                timeZone: 'Asia/Kolkata',
                                             })}
                                         </p>
                                     </div>
@@ -414,56 +437,315 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-3">
-                                {workspace.members.map((member) => (
-                                    <div
-                                        key={member.id}
-                                        className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-medium">
-                                                {member.user.name.charAt(0).toUpperCase()}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <p className="font-medium">{member.user.name}</p>
-                                                    {member.userId === workspace.ownerId && (
-                                                        <Crown className="w-4 h-4 text-amber-500" />
+                                {workspace.members.map((member) => {
+                                    const isMemberOwner = member.userId === workspace.ownerId
+                                    const isSelf = member.userId === session?.user?.id
+                                    const isExpanded = expandedMemberId === member.id
+                                    const hasPendingPerms = !!pendingPerms[member.id]
+
+                                    return (
+                                        <div
+                                            key={member.id}
+                                            className="rounded-lg border border-border overflow-hidden"
+                                        >
+                                            {/* Member Row */}
+                                            <div className="flex items-center justify-between p-4 bg-secondary/50 hover:bg-secondary transition-colors">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-medium">
+                                                        {member.user.name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="font-medium">{member.user.name}</p>
+                                                            {isMemberOwner && (
+                                                                <Crown className="w-4 h-4 text-amber-500" />
+                                                            )}
+                                                        </div>
+                                                        <p className="text-sm text-muted-foreground">{member.user.email}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    {canManageMembers && !isMemberOwner && !isSelf ? (
+                                                        <>
+                                                            <select
+                                                                value={member.role}
+                                                                onChange={(e) => handleUpdateMemberRole(member.id, e.target.value)}
+                                                                className="bg-secondary border border-border rounded-lg px-3 py-1.5 text-sm"
+                                                            >
+                                                                {ROLES.map((role) => (
+                                                                    <option key={role} value={role}>
+                                                                        {role}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => handleRemoveMember(member.id)}
+                                                                className="text-destructive hover:bg-destructive/10"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </Button>
+                                                            {/* Expand custom permissions */}
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => setExpandedMemberId(isExpanded ? null : member.id)}
+                                                                title="Custom permission overrides"
+                                                            >
+                                                                {isExpanded ? (
+                                                                    <ChevronDown className="w-4 h-4" />
+                                                                ) : (
+                                                                    <ChevronRight className="w-4 h-4" />
+                                                                )}
+                                                            </Button>
+                                                        </>
+                                                    ) : (
+                                                        <Badge className={ROLE_COLORS[member.role]}>
+                                                            {member.role}
+                                                        </Badge>
                                                     )}
                                                 </div>
-                                                <p className="text-sm text-muted-foreground">{member.user.email}</p>
                                             </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            {canManageMembers && member.userId !== workspace.ownerId ? (
-                                                <>
-                                                    <select
-                                                        value={member.role}
-                                                        onChange={(e) => handleUpdateMemberRole(member.id, e.target.value)}
-                                                        className="bg-secondary border border-border rounded-lg px-3 py-1.5 text-sm"
-                                                    >
-                                                        {ROLES.map((role) => (
-                                                            <option key={role} value={role}>
-                                                                {role}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => handleRemoveMember(member.id)}
-                                                        className="text-destructive hover:bg-destructive/10"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </Button>
-                                                </>
-                                            ) : (
-                                                <Badge className={ROLE_COLORS[member.role]}>
-                                                    {member.role}
-                                                </Badge>
+
+                                            {/* Custom Permission Overrides Panel */}
+                                            {isExpanded && canManageMembers && !isMemberOwner && (
+                                                <div className="border-t border-border p-4 bg-card/50">
+                                                    <div className="flex items-center justify-between mb-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <Shield className="w-4 h-4 text-primary" />
+                                                            <span className="text-sm font-medium">Custom Permission Overrides</span>
+                                                        </div>
+                                                        {hasPendingPerms && (
+                                                            <div className="flex gap-2">
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    onClick={() => {
+                                                                        setPendingPerms(prev => {
+                                                                            const next = { ...prev }
+                                                                            delete next[member.id]
+                                                                            return next
+                                                                        })
+                                                                    }}
+                                                                >
+                                                                    <X className="w-3 h-3 mr-1" /> Discard
+                                                                </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="gradient"
+                                                                    disabled={savingPerms === member.id}
+                                                                    onClick={async () => {
+                                                                        setSavingPerms(member.id)
+                                                                        try {
+                                                                            const res = await fetch(`/api/workspaces/${id}/members/${member.id}`, {
+                                                                                method: 'PUT',
+                                                                                headers: { 'Content-Type': 'application/json' },
+                                                                                body: JSON.stringify({ customPermissions: pendingPerms[member.id] }),
+                                                                            })
+                                                                            if (res.ok) {
+                                                                                setPendingPerms(prev => {
+                                                                                    const next = { ...prev }
+                                                                                    delete next[member.id]
+                                                                                    return next
+                                                                                })
+                                                                                await fetchWorkspace()
+                                                                            }
+                                                                        } catch (err) {
+                                                                            console.error('Failed to save permissions:', err)
+                                                                        } finally {
+                                                                            setSavingPerms(null)
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    {savingPerms === member.id ? (
+                                                                        <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Saving</>
+                                                                    ) : (
+                                                                        <><Save className="w-3 h-3 mr-1" /> Save</>
+                                                                    )}
+                                                                </Button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="space-y-4">
+                                                        {Object.entries(PERMISSION_GROUPS).map(([group, actions]) => {
+                                                            return (
+                                                                <div key={group}>
+                                                                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                                                                        {group}
+                                                                    </h4>
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {(actions as readonly string[]).map(action => {
+                                                                            // Hide .readOwn actions from the grid — they are
+                                                                            // controlled indirectly via the .read tri-state badge
+                                                                            if (Object.values(TRI_STATE_PERMISSIONS).includes(action as Permission)) return null
+
+                                                                            const roleDefaults = ROLE_PERMISSIONS[member.role] || []
+                                                                            const hasRoleDefault = roleDefaults.includes(action as Permission)
+                                                                            const customPerms = pendingPerms[member.id] ?? (member.customPermissions || [])
+                                                                            const override = customPerms.find(cp => cp.action === action)
+
+                                                                            // Tri-state for .read permissions that have a .readOwn variant
+                                                                            const ownAction = TRI_STATE_PERMISSIONS[action as Permission]
+                                                                            const isTriState = !!ownAction
+
+                                                                            // Determine tri-state: 'all' | 'own' | 'disabled' | null
+                                                                            let triState: 'all' | 'own' | 'disabled' | null = null
+                                                                            if (isTriState) {
+                                                                                const hasRead = override
+                                                                                    ? override.granted
+                                                                                    : hasRoleDefault
+                                                                                const ownOverride = customPerms.find(cp => cp.action === ownAction)
+                                                                                const hasOwnDefault = roleDefaults.includes(ownAction)
+                                                                                const hasReadOwn = ownOverride
+                                                                                    ? ownOverride.granted
+                                                                                    : hasOwnDefault
+
+                                                                                if (hasRead) triState = 'all'
+                                                                                else if (hasReadOwn) triState = 'own'
+                                                                                else triState = 'disabled'
+                                                                            }
+
+                                                                            // For normal permissions: derive state from override + role default
+                                                                            let state: 'role' | 'granted' | 'revoked' | 'none' = 'none'
+                                                                            if (!isTriState) {
+                                                                                if (override) {
+                                                                                    state = override.granted ? 'granted' : 'revoked'
+                                                                                } else if (hasRoleDefault) {
+                                                                                    state = 'role'
+                                                                                }
+                                                                            }
+
+                                                                            const label = PERMISSIONS[action as Permission]?.replace(/^[A-Z]/, (m: string) => m.toLowerCase()) || action
+
+                                                                            // Styling for tri-state badges
+                                                                            let bgClass = 'bg-secondary/50 text-muted-foreground border-border'
+                                                                            let icon = null
+
+                                                                            if (isTriState) {
+                                                                                if (triState === 'all') {
+                                                                                    bgClass = 'bg-green-500/15 text-green-400 border-green-500/40 ring-1 ring-green-500/20'
+                                                                                    icon = <Check className="w-3 h-3" />
+                                                                                } else if (triState === 'own') {
+                                                                                    bgClass = 'bg-blue-500/15 text-blue-400 border-blue-500/40 ring-1 ring-blue-500/20'
+                                                                                    icon = <Users className="w-3 h-3" />
+                                                                                } else {
+                                                                                    bgClass = 'bg-secondary/50 text-muted-foreground border-border line-through'
+                                                                                    icon = <X className="w-3 h-3" />
+                                                                                }
+                                                                            } else {
+                                                                                if (state === 'role') {
+                                                                                    bgClass = 'bg-primary/10 text-primary border-primary/30'
+                                                                                    icon = <Check className="w-3 h-3" />
+                                                                                } else if (state === 'granted') {
+                                                                                    bgClass = 'bg-green-500/15 text-green-400 border-green-500/40 ring-1 ring-green-500/20'
+                                                                                    icon = <Check className="w-3 h-3" />
+                                                                                } else if (state === 'revoked') {
+                                                                                    bgClass = 'bg-red-500/15 text-red-400 border-red-500/40 ring-1 ring-red-500/20 line-through'
+                                                                                    icon = <X className="w-3 h-3" />
+                                                                                }
+                                                                            }
+
+                                                                            // MANAGER skips 'View Own' — only cycles All ↔ Disabled
+                                                                            // All other roles (ADMIN, MEMBER, ASSISTANT, INTERN) support all three states
+                                                                            const supportsOwnState = member.role !== 'MANAGER'
+
+                                                                            // Tri-state click handler
+                                                                            const handleTriStateClick = () => {
+                                                                                const current = pendingPerms[member.id] ?? (member.customPermissions || []).map(cp => ({ action: cp.action, granted: cp.granted }))
+                                                                                const copy = current.filter(cp => cp.action !== action && cp.action !== ownAction)
+
+                                                                                if (triState === 'all') {
+                                                                                    if (supportsOwnState) {
+                                                                                        // → View Own: revoke .read, grant .readOwn
+                                                                                        copy.push({ action, granted: false })
+                                                                                        copy.push({ action: ownAction!, granted: true })
+                                                                                    } else {
+                                                                                        // MANAGER/ADMIN: skip own, go straight to Disabled
+                                                                                        copy.push({ action, granted: false })
+                                                                                        copy.push({ action: ownAction!, granted: false })
+                                                                                    }
+                                                                                } else if (triState === 'own') {
+                                                                                    // → Disabled: revoke both
+                                                                                    copy.push({ action, granted: false })
+                                                                                    copy.push({ action: ownAction!, granted: false })
+                                                                                } else {
+                                                                                    // disabled → View All: explicitly grant .read
+                                                                                    copy.push({ action, granted: true })
+                                                                                    copy.push({ action: ownAction!, granted: false })
+                                                                                }
+
+                                                                                setPendingPerms(prev => ({ ...prev, [member.id]: copy }))
+                                                                            }
+
+                                                                            // Normal toggle click handler
+                                                                            const handleNormalClick = () => {
+                                                                                const current = pendingPerms[member.id] ?? (member.customPermissions || []).map(cp => ({ action: cp.action, granted: cp.granted }))
+                                                                                const copy = [...current]
+                                                                                const idx = copy.findIndex(cp => cp.action === action)
+
+                                                                                if (idx >= 0) {
+                                                                                    if (copy[idx].granted) {
+                                                                                        copy[idx] = { action, granted: false }
+                                                                                    } else {
+                                                                                        copy.splice(idx, 1)
+                                                                                    }
+                                                                                } else {
+                                                                                    copy.push({ action, granted: !hasRoleDefault })
+                                                                                }
+
+                                                                                setPendingPerms(prev => ({ ...prev, [member.id]: copy }))
+                                                                            }
+
+                                                                            // Tri-state label suffix
+                                                                            const triLabel = isTriState
+                                                                                ? triState === 'all' ? ' (all)'
+                                                                                    : triState === 'own' ? ' (own)'
+                                                                                        : ''
+                                                                                : ''
+
+                                                                            return (
+                                                                                <button
+                                                                                    key={action}
+                                                                                    onClick={isTriState ? handleTriStateClick : handleNormalClick}
+                                                                                    title={isTriState ? `Click to cycle: View All → View Own → Disabled` : undefined}
+                                                                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs transition-all cursor-pointer hover:opacity-80 ${bgClass}`}
+                                                                                >
+                                                                                    {icon}
+                                                                                    {label}{triLabel}
+                                                                                </button>
+                                                                            )
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+
+                                                    {/* Legend */}
+                                                    <div className="flex flex-wrap gap-4 mt-4 pt-3 border-t border-border">
+                                                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                                            <span className="w-3 h-3 rounded bg-primary/10 border border-primary/30" /> Role default
+                                                        </span>
+                                                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                                            <span className="w-3 h-3 rounded bg-green-500/15 border border-green-500/40 ring-1 ring-green-500/20" /> Granted / View all
+                                                        </span>
+                                                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                                            <span className="w-3 h-3 rounded bg-blue-500/15 border border-blue-500/40 ring-1 ring-blue-500/20" /> View own
+                                                        </span>
+                                                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                                            <span className="w-3 h-3 rounded bg-red-500/15 border border-red-500/40 ring-1 ring-red-500/20" /> Revoked
+                                                        </span>
+                                                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                                            <span className="w-3 h-3 rounded bg-secondary/50 border border-border" /> Not granted
+                                                        </span>
+                                                    </div>
+                                                </div>
                                             )}
                                         </div>
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         </CardContent>
                     </Card>
@@ -485,7 +767,7 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
                                         <Input
                                             value={editName}
                                             onChange={(e) => setEditName(e.target.value)}
-                                            disabled={!isOwner}
+                                            disabled={!canManageSettings}
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -493,10 +775,10 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
                                         <Input
                                             value={editDescription}
                                             onChange={(e) => setEditDescription(e.target.value)}
-                                            disabled={!isOwner}
+                                            disabled={!canManageSettings}
                                         />
                                     </div>
-                                    {isOwner && (
+                                    {canManageSettings && (
                                         <Button type="submit" disabled={isSaving} className="gap-2">
                                             <Save className="w-4 h-4" />
                                             {isSaving ? 'Saving...' : 'Save Changes'}
@@ -634,7 +916,8 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
                                         </Button>
                                         <Button
                                             type="submit"
-                                            className="flex-1 bg-gradient-to-r from-indigo-500 to-purple-600"
+                                            className="flex-1"
+                                            variant="gradient"
                                             disabled={isInviting || !inviteEmail.trim()}
                                         >
                                             {isInviting ? 'Inviting...' : 'Send Invite'}

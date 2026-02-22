@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { getISTStartOfDay, getISTEndOfDay } from '@/lib/timezone'
 
 // GET /api/display-board - Get display board data for relevant courts
 export async function GET(request: NextRequest) {
@@ -45,10 +46,8 @@ export async function GET(request: NextRequest) {
         const workspaceIds = memberships.map(m => m.workspaceId)
 
         // Get today's hearings for the user
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const tomorrow = new Date(today)
-        tomorrow.setDate(tomorrow.getDate() + 1)
+        const today = getISTStartOfDay()
+        const tomorrow = getISTEndOfDay()
 
         const todayHearings = await prisma.hearing.findMany({
             where: {

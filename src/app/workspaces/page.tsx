@@ -40,6 +40,7 @@ interface Workspace {
         cases: number
         members: number
     }
+    role: string
     createdAt: string
 }
 
@@ -160,7 +161,8 @@ export default function WorkspacesPage() {
                     </div>
                     <Button
                         onClick={() => setShowCreateModal(true)}
-                        className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
+                        variant="gradient"
+                        className="gap-2"
                     >
                         <Plus className="w-4 h-4" />
                         New Workspace
@@ -303,13 +305,23 @@ export default function WorkspacesPage() {
                                         </Button>
                                         <Button
                                             type="submit"
-                                            className="flex-1 bg-gradient-to-r from-indigo-500 to-purple-600"
+                                            className="flex-1"
+                                            variant="gradient"
                                             disabled={isCreating || !newWorkspaceName.trim()}
                                         >
                                             {isCreating ? 'Creating...' : 'Create Workspace'}
                                         </Button>
                                     </div>
                                 </form>
+
+                                <div className="mt-4 pt-4 border-t border-dashed">
+                                    <h4 className="text-sm font-medium mb-2">What happens next?</h4>
+                                    <ul className="text-xs text-muted-foreground space-y-1">
+                                        <li>• You&apos;ll be added as the workspace owner with full admin access</li>
+                                        <li>• You can invite team members and assign them roles</li>
+                                        <li>• All cases, clients, and documents will be organized in this workspace</li>
+                                    </ul>
+                                </div>
                             </CardContent>
                         </Card>
                     </div>
@@ -350,7 +362,7 @@ function WorkspaceCard({
                         ) : (
                             <Badge variant="secondary">
                                 <UserCheck className="w-3 h-3 mr-1" />
-                                Member
+                                {workspace.role.charAt(0) + workspace.role.slice(1).toLowerCase()}
                             </Badge>
                         )}
                     </div>
@@ -376,7 +388,7 @@ function WorkspaceCard({
                     <div className="flex items-center gap-2 mt-4 pt-4 border-t border-border">
                         <Calendar className="w-4 h-4 text-muted-foreground" />
                         <span className="text-xs text-muted-foreground">
-                            Created {new Date(workspace.createdAt).toLocaleDateString()}
+                            Created {new Date(workspace.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
                         </span>
                     </div>
                 </CardContent>
