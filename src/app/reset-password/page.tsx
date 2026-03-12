@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { getSafeErrorMessage } from '@/lib/api-error'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Briefcase, Lock, AlertCircle, CheckCircle, Check } from 'lucide-react'
 
 export default function ResetPasswordPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Lock className="w-8 h-8 animate-pulse text-primary" /></div>}>
+            <ResetPasswordContent />
+        </Suspense>
+    )
+}
+
+function ResetPasswordContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const token = searchParams.get('token')
@@ -60,7 +69,7 @@ export default function ResetPasswordPage() {
                 router.push('/login')
             }, 2000)
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to reset password')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }

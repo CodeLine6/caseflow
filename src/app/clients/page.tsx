@@ -1,5 +1,6 @@
 'use client'
 
+import { getSafeErrorMessage } from '@/lib/api-error'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -47,7 +48,7 @@ export default function ClientsPage() {
             if (!res.ok) throw new Error(data.error || 'Failed to fetch clients')
             setClients(data.clients)
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }

@@ -1,5 +1,6 @@
 'use client'
 
+import { getSafeErrorMessage } from '@/lib/api-error'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -61,7 +62,7 @@ export default function RegisterPage() {
 
       router.push('/login?registered=true')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed')
+      setError(getSafeErrorMessage(err))
     } finally {
       setLoading(false)
     }

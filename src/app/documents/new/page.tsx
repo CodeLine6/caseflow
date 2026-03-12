@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { getSafeErrorMessage } from '@/lib/api-error'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
     FileText, Upload, AlertCircle, ArrowLeft, Loader2
@@ -18,6 +19,14 @@ type Case = {
 }
 
 export default function NewDocumentPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+            <NewDocumentContent />
+        </Suspense>
+    )
+}
+
+function NewDocumentContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const caseIdParam = searchParams.get('caseId')
@@ -97,7 +106,7 @@ export default function NewDocumentPage() {
 
             router.push('/documents')
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }

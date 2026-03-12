@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { getSafeErrorMessage } from '@/lib/api-error'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
     Calendar, Clock, Scale, Briefcase,
@@ -37,6 +38,14 @@ type WorkspaceMember = {
 }
 
 export default function NewHearingPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+            <NewHearingContent />
+        </Suspense>
+    )
+}
+
+function NewHearingContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const caseIdParam = searchParams.get('caseId')
@@ -89,7 +98,7 @@ export default function NewHearingPage() {
             if (!res.ok) throw new Error(data.error)
             setCases(data.cases || [])
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load cases')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoadingCases(false)
         }
@@ -134,7 +143,14 @@ export default function NewHearingPage() {
     }
 
     const handleChange = (field: string, value: string) => {
-        setFormData(prev => ({ ...prev, [field]: value }))
+        setFormData(prev => {
+            const updated = { ...prev, [field]: value }
+            // If hearing counsel changed, remove them from accompanied list
+            if (field === 'hearingCounselId' && value) {
+                updated.accompaniedByIds = prev.accompaniedByIds.filter(id => id !== value)
+            }
+            return updated
+        })
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -183,7 +199,7 @@ export default function NewHearingPage() {
 
             router.push('/hearings')
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }
@@ -410,7 +426,7 @@ export default function NewHearingPage() {
                                             </div>
                                         ) : (
                                             <MultiSelect
-                                                options={memberOptions}
+                                                options={memberOptions.filter(o => o.value !== formData.hearingCounselId)}
                                                 value={formData.accompaniedByIds}
                                                 onValueChange={(vals) => setFormData(prev => ({ ...prev, accompaniedByIds: vals }))}
                                                 placeholder="Select accompanying"

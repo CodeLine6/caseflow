@@ -13,7 +13,8 @@ export async function GET(request: NextRequest) {
 
         const { searchParams } = new URL(request.url)
         const unreadOnly = searchParams.get('unread') === 'true'
-        const limit = parseInt(searchParams.get('limit') || '10')
+        const rawLimit = parseInt(searchParams.get('limit') || '10')
+        const limit = (!rawLimit || rawLimit < 1 || rawLimit > 100) ? 10 : rawLimit
 
         const notifications = await prisma.notification.findMany({
             where: {
@@ -86,7 +87,19 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const { notificationIds, markAll } = await request.json()
+        let notificationIds: string[] | undefined
+        let markAll: boolean | undefined
+        try {
+            const body = await request.json()
+            notificationIds = body.notificationIds
+            markAll = body.markAll
+        } catch {
+            return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+        }
+
+        if (!markAll && (!notificationIds || !Array.isArray(notificationIds) || notificationIds.length === 0)) {
+            return NextResponse.json({ error: 'markAll or notificationIds array is required' }, { status: 400 })
+        }
 
         if (markAll) {
             await prisma.notification.updateMany({

@@ -123,25 +123,22 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
         // Connect to scraper service
         const socket = io(SCRAPER_URL, {
             transports: ['websocket', 'polling'],
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000,
+            reconnectionAttempts: 2,
+            reconnectionDelay: 3000,
         })
         socketRef.current = socket
 
         socket.on('connect', () => {
-            console.log('Connected to scraper service')
             setConnected(true)
             // Subscribe to relevant courts
             socket.emit('subscribe', courtIds)
         })
 
         socket.on('disconnect', () => {
-            console.log('Disconnected from scraper service')
             setConnected(false)
         })
 
         socket.on('display-update', (data: DisplayUpdateEvent) => {
-            console.log('Received display update:', data.courtId)
             setDisplayData(prev => ({
                 ...prev,
                 [data.courtId]: data.entries.filter(d =>
@@ -158,8 +155,8 @@ export default function DisplayBoard({ className }: DisplayBoardProps) {
             }))
         })
 
-        socket.on('connect_error', (err) => {
-            console.error('Socket connection error:', err)
+        socket.on('connect_error', () => {
+            // Scraper service being offline is expected — don't show as error
             setConnected(false)
         })
 

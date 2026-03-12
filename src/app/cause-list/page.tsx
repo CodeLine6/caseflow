@@ -3,6 +3,7 @@
 import { formatTime12h } from '@/lib/timezone'
 
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -16,13 +17,29 @@ import {
     MapPin,
     Briefcase,
     Scale,
-    Users,
     AlertCircle,
+    Users,
+    UserCheck,
+    X,
+    Loader2,
+    Check,
+    CheckCircle,
 } from 'lucide-react'
 import Link from 'next/link'
 import { format, addDays, subDays, isToday, isSameDay, parseISO } from 'date-fns'
 import DisplayBoard from '@/components/DisplayBoard'
+import { usePermissions } from '@/hooks/usePermissions'
 import { PermissionGate } from '@/components/PermissionGate'
+
+interface AttendanceRecord {
+    memberId: string
+    attended: boolean
+    member: {
+        userId: string
+        role: string
+        user: { name: string }
+    }
+}
 
 interface Hearing {
     id: string
@@ -37,17 +54,21 @@ interface Hearing {
         caseNumber: string
         title: string
         priority: string
+        workspaceId: string
         court: {
             id: string
             courtName: string
             courtType: string
             city: string | null
         } | null
-        client: {
-            id: string
-            name: string
-        } | null
     }
+    hearingCounsel?: {
+        id: string
+        userId: string
+        role: string
+        user: { name: string }
+    } | null
+    attendance?: AttendanceRecord[]
 }
 
 const priorityColors: Record<string, string> = {
@@ -70,6 +91,17 @@ export default function CauseListPage() {
     const [hearingsByDate, setHearingsByDate] = useState<Record<string, number>>({})
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const { can } = usePermissions()
+    const { data: session } = useSession()
+
+    // Counsel attendance modal state
+    const [counselModalHearing, setCounselModalHearing] = useState<Hearing | null>(null)
+    const [counselSelfAttended, setCounselSelfAttended] = useState(false)
+    const [accompaniedChecked, setAccompaniedChecked] = useState<Record<string, boolean>>({})
+    const [outcomeForm, setOutcomeForm] = useState({ outcome: '', orderLink: '', nextDate: '', remarks: '' })
+    const [modalLoading, setModalLoading] = useState(false)
+    const [modalSaving, setModalSaving] = useState(false)
+    const [modalError, setModalError] = useState<string | null>(null)
 
     useEffect(() => {
         fetchCauseList()
@@ -94,6 +126,106 @@ export default function CauseListPage() {
             setError('Failed to load cause list')
         } finally {
             setLoading(false)
+        }
+    }
+
+    // Determine user's role for a hearing (Bug 7: use .userId for comparisons)
+    const getUserRole = (hearing: Hearing) => {
+        const userId = session?.user?.id
+        if (!userId) return 'none' as const
+        if (hearing.hearingCounsel?.userId === userId) return 'counsel' as const
+        if (hearing.attendance?.some(a => a.member.userId === userId)) return 'accompanying' as const
+        return 'none' as const
+    }
+
+    // Open counsel modal (Bug 11: clear state before opening)
+    const openCounselModal = (hearing: Hearing) => {
+        setCounselModalHearing(hearing)
+        setModalError(null)
+        setModalLoading(false)
+        setModalSaving(false)
+
+        // Pre-populate from existing attendance
+        const isSelfAttended = hearing.attendance?.some(
+            a => a.memberId === hearing.hearingCounsel?.id && a.attended
+        ) ?? false
+        setCounselSelfAttended(isSelfAttended)
+
+        const checked: Record<string, boolean> = {}
+        hearing.attendance?.forEach(a => {
+            // Skip the counsel's own record
+            if (a.memberId !== hearing.hearingCounsel?.id) {
+                checked[a.memberId] = a.attended
+            }
+        })
+        setAccompaniedChecked(checked)
+        setOutcomeForm({ outcome: '', orderLink: '', nextDate: '', remarks: '' })
+    }
+
+    // Save counsel attendance
+    const saveCounselAttendance = async () => {
+        if (!counselModalHearing) return
+        setModalSaving(true)
+        setModalError(null)
+
+        try {
+            const accompaniedAttendance = Object.entries(accompaniedChecked)
+                .map(([memberId, attended]) => ({ memberId, attended }))
+
+            const res = await fetch(`/api/hearings/${counselModalHearing.id}/attendance`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    counselAttended: counselSelfAttended,
+                    accompaniedAttendance,
+                    outcome: outcomeForm.outcome || undefined,
+                    orderLink: outcomeForm.orderLink || undefined,
+                    nextDateOfHearing: outcomeForm.nextDate || undefined,
+                    additionalRemarks: outcomeForm.remarks || undefined,
+                }),
+            })
+
+            if (res.ok) {
+                const data = await res.json()
+                // Update hearing in local state
+                setHearings(prev => prev.map(h =>
+                    h.id === counselModalHearing.id
+                        ? {
+                            ...h,
+                            attendance: data.attendance,
+                            status: data.hearing?.status || h.status,
+                        }
+                        : h
+                ))
+                setCounselModalHearing(null)
+            } else {
+                const data = await res.json()
+                setModalError(data.error || 'Failed to save attendance')
+            }
+        } catch (err) {
+            setModalError('Network error — please try again')
+        } finally {
+            setModalSaving(false)
+        }
+    }
+
+    // Self-mark for accompanying counsel
+    const markSelfPresent = async (hearingId: string) => {
+        try {
+            const res = await fetch(`/api/hearings/${hearingId}/attendance`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ markSelf: true }),
+            })
+
+            if (res.ok) {
+                const data = await res.json()
+                setHearings(prev => prev.map(h =>
+                    h.id === hearingId ? { ...h, attendance: data.attendance } : h
+                ))
+            }
+        } catch (err) {
+            console.error('Failed to mark self present:', err)
         }
     }
 
@@ -300,12 +432,7 @@ export default function CauseListPage() {
                                                                     <span>Court #{hearing.courtNumber}</span>
                                                                 </div>
 
-                                                                {hearing.case.client && (
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <Users className="w-4 h-4" />
-                                                                        <span>{hearing.case.client.name}</span>
-                                                                    </div>
-                                                                )}
+
                                                             </div>
 
                                                             {hearing.description && (
@@ -317,7 +444,7 @@ export default function CauseListPage() {
                                                     </div>
                                                 </div>
 
-                                                <div className="flex flex-col gap-2">
+                                                <div className="flex flex-col gap-2 items-end">
                                                     <Badge
                                                         className={cn(
                                                             'justify-center',
@@ -330,6 +457,87 @@ export default function CauseListPage() {
                                                         {hearing.case.priority}
                                                     </Badge>
                                                     <Badge variant="secondary">{hearing.hearingType}</Badge>
+
+                                                    {/* Attendance indicator */}
+                                                    {hearing.attendance && hearing.attendance.filter(a => a.attended).length > 0 && (
+                                                        <div className="flex items-center gap-1 text-xs text-green-500">
+                                                            <UserCheck className="w-3.5 h-3.5" />
+                                                            <span>{hearing.attendance.filter(a => a.attended).length} attended</span>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Role-based CTAs */}
+                                                    {(() => {
+                                                        const role = getUserRole(hearing)
+
+                                                        // Hearing counsel: full attendance modal
+                                                        if (role === 'counsel' && hearing.status !== 'COMPLETED') {
+                                                            return (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="gap-1.5 text-xs"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation()
+                                                                        openCounselModal(hearing)
+                                                                    }}
+                                                                >
+                                                                    <Users className="w-3.5 h-3.5" />
+                                                                    Mark Attendance
+                                                                </Button>
+                                                            )
+                                                        }
+
+                                                        // Completed hearing with counsel
+                                                        if (role === 'counsel' && hearing.status === 'COMPLETED') {
+                                                            return (
+                                                                <span className="text-xs text-green-500 flex items-center gap-1">
+                                                                    <CheckCircle className="w-3.5 h-3.5" />
+                                                                    Completed
+                                                                </span>
+                                                            )
+                                                        }
+
+                                                        // Accompanying counsel: self-mark toggle
+                                                        if (role === 'accompanying') {
+                                                            const myRecord = hearing.attendance?.find(
+                                                                a => a.member.userId === session?.user?.id
+                                                            )
+                                                            if (myRecord?.attended) {
+                                                                return (
+                                                                    <span className="text-xs text-green-500 flex items-center gap-1">
+                                                                        <UserCheck className="w-3.5 h-3.5" />
+                                                                        Present
+                                                                    </span>
+                                                                )
+                                                            }
+                                                            return (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="gap-1.5 text-xs"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation()
+                                                                        markSelfPresent(hearing.id)
+                                                                    }}
+                                                                >
+                                                                    <UserCheck className="w-3.5 h-3.5" />
+                                                                    Mark Present
+                                                                </Button>
+                                                            )
+                                                        }
+
+                                                        // Bug 12: Fallback — no counsel assigned, user has hearings.update
+                                                        if (!hearing.hearingCounsel && can('hearings.update' as any) && hearing.status !== 'COMPLETED') {
+                                                            return (
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    No counsel assigned
+                                                                </span>
+                                                            )
+                                                        }
+
+                                                        return null
+                                                    })()}
                                                 </div>
                                             </div>
                                         </CardContent>
@@ -346,6 +554,206 @@ export default function CauseListPage() {
                         </div>
                     )}
                 </div>
+
+                {/* Counsel Attendance Modal */}
+                {counselModalHearing && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center">
+                        <div
+                            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                            onClick={() => setCounselModalHearing(null)}
+                        />
+                        <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[85vh] flex flex-col">
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between p-5 border-b border-border">
+                                <div>
+                                    <h3 className="text-lg font-semibold">Mark Attendance</h3>
+                                    <p className="text-sm text-muted-foreground mt-0.5">
+                                        {counselModalHearing.case.caseNumber} — {counselModalHearing.case.title}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setCounselModalHearing(null)}
+                                    className="p-1.5 rounded-lg hover:bg-secondary transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                                {/* Error message (Bug 14 fix) */}
+                                {modalError && (
+                                    <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm flex items-center gap-2">
+                                        <AlertCircle className="w-4 h-4 shrink-0" />
+                                        {modalError}
+                                    </div>
+                                )}
+
+                                {/* Phase 1: Self attendance */}
+                                <div>
+                                    <p className="text-sm font-medium mb-2">Your Attendance</p>
+                                    <label
+                                        className={cn(
+                                            'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all',
+                                            counselSelfAttended
+                                                ? 'bg-green-500/10 border border-green-500/30'
+                                                : 'bg-secondary/30 border border-transparent hover:bg-secondary/50'
+                                        )}
+                                    >
+                                        <div className={cn(
+                                            'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors shrink-0',
+                                            counselSelfAttended
+                                                ? 'bg-green-500 border-green-500'
+                                                : 'border-muted-foreground/40'
+                                        )}>
+                                            {counselSelfAttended && <Check className="w-3 h-3 text-white" />}
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            className="sr-only"
+                                            checked={counselSelfAttended}
+                                            onChange={(e) => setCounselSelfAttended(e.target.checked)}
+                                        />
+                                        <div>
+                                            <p className="font-medium text-sm">I attended this hearing</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                This will mark the hearing as completed
+                                            </p>
+                                        </div>
+                                    </label>
+                                </div>
+
+                                {/* Accompanying counsels */}
+                                {counselModalHearing.attendance && counselModalHearing.attendance.filter(a => a.memberId !== counselModalHearing.hearingCounsel?.id).length > 0 && (
+                                    <div>
+                                        <p className="text-sm font-medium mb-2">Accompanying Counsels</p>
+                                        <div className="space-y-2">
+                                            {counselModalHearing.attendance
+                                                .filter(a => a.memberId !== counselModalHearing.hearingCounsel?.id)
+                                                .map((record) => {
+                                                    const isChecked = !!accompaniedChecked[record.memberId]
+                                                    return (
+                                                        <label
+                                                            key={record.memberId}
+                                                            className={cn(
+                                                                'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all',
+                                                                isChecked
+                                                                    ? 'bg-primary/10 border border-primary/30'
+                                                                    : 'bg-secondary/30 border border-transparent hover:bg-secondary/50'
+                                                            )}
+                                                        >
+                                                            <div className={cn(
+                                                                'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors shrink-0',
+                                                                isChecked
+                                                                    ? 'bg-primary border-primary'
+                                                                    : 'border-muted-foreground/40'
+                                                            )}>
+                                                                {isChecked && <Check className="w-3 h-3 text-white" />}
+                                                            </div>
+                                                            <input
+                                                                type="checkbox"
+                                                                className="sr-only"
+                                                                checked={isChecked}
+                                                                onChange={(e) => {
+                                                                    setAccompaniedChecked(prev => ({
+                                                                        ...prev,
+                                                                        [record.memberId]: e.target.checked,
+                                                                    }))
+                                                                }}
+                                                            />
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="font-medium text-sm truncate">
+                                                                    {record.member.user.name}
+                                                                </p>
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    {record.member.role.charAt(0) + record.member.role.slice(1).toLowerCase()}
+                                                                </p>
+                                                            </div>
+                                                        </label>
+                                                    )
+                                                })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Phase 2: Outcome form (shown when counsel marks self attended) */}
+                                {counselSelfAttended && (
+                                    <div className="space-y-3 pt-3 border-t border-border">
+                                        <p className="text-sm font-medium">Hearing Outcome</p>
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs text-muted-foreground">Outcome</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. Adjourned, Dismissed, Order passed..."
+                                                value={outcomeForm.outcome}
+                                                onChange={(e) => setOutcomeForm(prev => ({ ...prev, outcome: e.target.value }))}
+                                                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs text-muted-foreground">Order Link</label>
+                                            <input
+                                                type="url"
+                                                placeholder="https://..."
+                                                value={outcomeForm.orderLink}
+                                                onChange={(e) => setOutcomeForm(prev => ({ ...prev, orderLink: e.target.value }))}
+                                                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs text-muted-foreground">Next Date of Hearing</label>
+                                            <input
+                                                type="date"
+                                                value={outcomeForm.nextDate}
+                                                onChange={(e) => setOutcomeForm(prev => ({ ...prev, nextDate: e.target.value }))}
+                                                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
+                                            />
+                                            {outcomeForm.nextDate && (
+                                                <p className="text-xs text-primary">A follow-up hearing will be auto-created</p>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs text-muted-foreground">Additional Remarks</label>
+                                            <textarea
+                                                rows={2}
+                                                placeholder="Any additional notes..."
+                                                value={outcomeForm.remarks}
+                                                onChange={(e) => setOutcomeForm(prev => ({ ...prev, remarks: e.target.value }))}
+                                                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm resize-none"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="flex items-center justify-end gap-2 p-5 border-t border-border">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setCounselModalHearing(null)}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    onClick={saveCounselAttendance}
+                                    disabled={modalSaving}
+                                >
+                                    {modalSaving ? (
+                                        <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Saving...</>
+                                    ) : (
+                                        'Save Attendance'
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </MainLayout>
     )

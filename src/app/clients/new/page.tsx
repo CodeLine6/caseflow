@@ -1,5 +1,6 @@
 'use client'
 
+import { getSafeErrorMessage } from '@/lib/api-error'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Users, ArrowLeft, Save, Loader2, AlertCircle } from 'lucide-react'
@@ -85,7 +86,7 @@ export default function NewClientPage() {
 
             router.push('/clients')
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }

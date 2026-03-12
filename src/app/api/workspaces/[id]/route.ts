@@ -137,6 +137,12 @@ export async function DELETE(
             return NextResponse.json({ error: 'Only the owner can delete the workspace' }, { status: 403 })
         }
 
+        // Clear defaultWorkspaceId for users who had this as default
+        await prisma.user.updateMany({
+            where: { defaultWorkspaceId: id },
+            data: { defaultWorkspaceId: null },
+        })
+
         await prisma.workspace.delete({
             where: { id },
         })

@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
                         caseNumber: true,
                         title: true,
                         priority: true,
+                        workspaceId: true,
                         court: {
                             select: {
                                 id: true,
@@ -58,6 +59,27 @@ export async function GET(request: NextRequest) {
                             select: {
                                 id: true,
                                 name: true,
+                            },
+                        },
+                    },
+                },
+                hearingCounsel: {
+                    select: {
+                        id: true,
+                        userId: true,
+                        role: true,
+                        user: { select: { name: true } },
+                    },
+                },
+                attendance: {
+                    select: {
+                        memberId: true,
+                        attended: true,
+                        member: {
+                            select: {
+                                userId: true,
+                                role: true,
+                                user: { select: { name: true } },
                             },
                         },
                     },

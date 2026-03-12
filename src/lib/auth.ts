@@ -15,43 +15,58 @@ export const authOptions: NextAuthOptions = {
                 password: { label: 'Password', type: 'password' },
             },
             async authorize(credentials) {
-                if (!credentials?.email || !credentials?.password) {
-                    throw new Error('Please enter email and password')
-                }
+                try {
+                    if (!credentials?.email || !credentials?.password) {
+                        throw new Error('Please enter email and password')
+                    }
 
-                const user = await prisma.user.findUnique({
-                    where: { email: credentials.email },
-                    include: {
-                        workspaces: {
-                            include: {
-                                workspace: {
-                                    select: {
-                                        id: true,
-                                        name: true,
-                                        slug: true,
+                    const user = await prisma.user.findUnique({
+                        where: { email: credentials.email },
+                        include: {
+                            workspaces: {
+                                include: {
+                                    workspace: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            slug: true,
+                                        },
                                     },
                                 },
                             },
                         },
-                    },
-                })
+                    })
 
-                if (!user || !user.isActive) {
-                    throw new Error('Invalid credentials or account is inactive')
-                }
+                    if (!user || !user.isActive) {
+                        throw new Error('Invalid credentials or account is inactive')
+                    }
 
-                const isValid = await bcrypt.compare(credentials.password, user.password)
+                    const isValid = await bcrypt.compare(credentials.password, user.password)
 
-                if (!isValid) {
-                    throw new Error('Invalid credentials')
-                }
+                    if (!isValid) {
+                        throw new Error('Invalid credentials')
+                    }
 
-                return {
-                    id: user.id,
-                    email: user.email,
-                    name: user.name,
-                    image: user.avatar,
-                    defaultWorkspaceId: user.defaultWorkspaceId,
+                    return {
+                        id: user.id,
+                        email: user.email,
+                        name: user.name,
+                        image: user.avatar,
+                        defaultWorkspaceId: user.defaultWorkspaceId,
+                    }
+                } catch (error) {
+                    // Re-throw known user-facing errors as-is
+                    const knownMessages = [
+                        'Please enter email and password',
+                        'Invalid credentials or account is inactive',
+                        'Invalid credentials',
+                    ]
+                    if (error instanceof Error && knownMessages.includes(error.message)) {
+                        throw error
+                    }
+                    // Log the real error server-side, return a generic message to the client
+                    console.error('Login authorization error:', error)
+                    throw new Error('Unable to sign in. Please try again later.')
                 }
             },
         }),

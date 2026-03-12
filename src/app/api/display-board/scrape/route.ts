@@ -196,7 +196,7 @@ async function scrapeCourt(court: { id: number; courtName: string; displayBoardU
             courtName: court.courtName,
             success: false,
             entriesCount: 0,
-            error: error instanceof Error ? error.message : 'Unknown error'
+            error: 'Failed to scrape display board'
         }
     }
 }
@@ -292,10 +292,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('Failed to scrape display boards:', error)
         return NextResponse.json(
-            {
-                error: 'Failed to scrape display boards',
-                details: error instanceof Error ? error.message : 'Unknown error'
-            },
+            { error: 'Failed to scrape display boards' },
             { status: 500 }
         )
     }

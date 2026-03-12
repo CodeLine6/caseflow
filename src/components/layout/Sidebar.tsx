@@ -85,7 +85,8 @@ export default function Sidebar({ collapsed = false, onCollapse }: SidebarProps)
             }
         }
         fetchWorkspaces()
-    }, [session, activeWorkspaceId])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [session])
 
     const handleWorkspaceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const id = e.target.value
@@ -101,6 +102,8 @@ export default function Sidebar({ collapsed = false, onCollapse }: SidebarProps)
 
     const filteredNavItems = navItems.filter((item) => {
         if (!item.permission) return true
+        // Hide permission-gated items while loading — the PermissionsProvider
+        // keeps loading=true until the session and workspace are ready.
         if (loading) return false
         if (Array.isArray(item.permission)) {
             return item.permission.some(p => can(p as any))

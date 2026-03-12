@@ -157,9 +157,18 @@ export async function PUT(
             }
         })
 
-        // Handle accompaniedByIds — delete old, create new (in transaction)
+        // Handle accompaniedByIds — preserve attended flags (Bug 6 fix)
         if (accompaniedByIds !== undefined) {
             await prisma.$transaction(async (tx) => {
+                // Get existing records to preserve attended flags
+                const existing = await tx.hearingAttendance.findMany({
+                    where: { hearingId: id },
+                    select: { memberId: true, attended: true },
+                })
+                const attendedMap = Object.fromEntries(
+                    existing.map(a => [a.memberId, a.attended])
+                )
+
                 await tx.hearingAttendance.deleteMany({
                     where: { hearingId: id }
                 })
@@ -169,7 +178,7 @@ export async function PUT(
                         data: accompaniedByIds.map((memberId: string) => ({
                             hearingId: id,
                             memberId,
-                            attended: false,
+                            attended: attendedMap[memberId] ?? false,
                         }))
                     })
                 }
@@ -184,6 +193,7 @@ export async function PUT(
                     hearingDate: new Date(`${nextDateOfHearing}T12:00:00+05:30`),
                     hearingTime: updatedHearing.hearingTime,
                     hearingType: updatedHearing.hearingType,
+                    description: updatedHearing.description,
                     judgeName: updatedHearing.judgeName,
                     courtNumber: updatedHearing.courtNumber,
                     courtItemNumber: updatedHearing.courtItemNumber,

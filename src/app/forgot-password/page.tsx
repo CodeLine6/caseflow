@@ -1,5 +1,6 @@
 'use client'
 
+import { getSafeErrorMessage } from '@/lib/api-error'
 import { useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -34,7 +35,7 @@ export default function ForgotPasswordPage() {
             setSuccess(true)
             setEmail('')
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to send reset email')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }

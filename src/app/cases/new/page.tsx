@@ -1,5 +1,6 @@
 'use client'
 
+import { getSafeErrorMessage } from '@/lib/api-error'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -414,7 +415,7 @@ export default function NewCasePage() {
 
             router.push(`/cases/${data.id}`)
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }

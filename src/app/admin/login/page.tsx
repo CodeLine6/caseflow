@@ -1,5 +1,6 @@
 'use client'
 
+import { getSafeErrorMessage } from '@/lib/api-error'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -38,7 +39,7 @@ export default function AdminLoginPage() {
             router.push('/admin/dashboard')
             router.refresh()
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Login failed')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }

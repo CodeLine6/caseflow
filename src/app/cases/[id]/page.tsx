@@ -1,5 +1,6 @@
 'use client'
 
+import { getSafeErrorMessage } from '@/lib/api-error'
 import { formatTime12h } from '@/lib/timezone'
 
 import { useState, useEffect, use } from 'react'
@@ -50,6 +51,7 @@ type HearingData = {
     hearingTime: string | null
     hearingType: string
     status: string
+    purpose: string | null
     description: string | null
     judgeName: string | null
     courtNumber: string
@@ -121,7 +123,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             setCaseData(data)
             setEditData(data)
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }
@@ -134,7 +136,12 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    ...editData,
+                    title: editData.title,
+                    description: editData.description,
+                    status: editData.status,
+                    priority: editData.priority,
+                    opposingParty: editData.opposingParty,
+                    opposingCounsel: editData.opposingCounsel,
                     clientId: editData.clientId || null,
                     mainCounselId: editData.mainCounselId || null,
                 }),
@@ -149,7 +156,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             setCaseData(updated)
             setIsEditing(false)
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to save')
+            setError(getSafeErrorMessage(err))
         } finally {
             setSaving(false)
         }
@@ -171,7 +178,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
 
             router.push('/cases')
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to delete')
+            setError(getSafeErrorMessage(err))
             setDeleting(false)
         }
     }
@@ -571,7 +578,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                         >
                                             <option value="">No counsel assigned</option>
                                             {workspaceMembers
-                                                .filter(m => m.role === 'MEMBER')
+                                                .filter(m => m.role === 'MEMBER' || m.role === 'ADMIN')
                                                 .map(m => (
                                                     <option key={m.user.id} value={m.user.id}>
                                                         {m.user.name}
@@ -721,6 +728,7 @@ function EditHearingModal({
     const [formData, setFormData] = useState({
         hearingDate: hearing.hearingDate ? new Date(hearing.hearingDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) : '',
         hearingTime: hearing.hearingTime || '',
+        purpose: hearing.purpose || hearing.description || '',
         hearingType: hearing.hearingType || 'OTHER',
         status: hearing.status || 'SCHEDULED',
         judgeName: hearing.judgeName || '',
@@ -812,7 +820,20 @@ function EditHearingModal({
                                 onChange={(val) => setFormData({ ...formData, hearingTime: val })}
                             />
                         </div>
+                    </div>
 
+                    {/* Purpose */}
+                    <div className="space-y-2">
+                        <Label>Purpose *</Label>
+                        <Input
+                            value={formData.purpose}
+                            onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                            placeholder="e.g., Arguments, Evidence submission"
+                            required
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Type & Status */}
                         <div className="space-y-2">
                             <Label>Hearing Type</Label>

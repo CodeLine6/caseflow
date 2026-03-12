@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { getSafeErrorMessage } from '@/lib/api-error'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
     CheckCircle, Calendar, Briefcase, User,
@@ -24,6 +25,14 @@ type User = {
 }
 
 export default function NewTaskPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+            <NewTaskContent />
+        </Suspense>
+    )
+}
+
+function NewTaskContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const caseIdParam = searchParams.get('caseId')
@@ -134,7 +143,7 @@ export default function NewTaskPage() {
 
             router.push('/tasks')
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }

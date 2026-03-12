@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, use } from 'react'
+import { getSafeErrorMessage } from '@/lib/api-error'
 import { useRouter } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -137,8 +138,7 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
             const data = await response.json()
             setWorkspace(data.workspace)
         } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-            setError(errorMessage)
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }
@@ -166,8 +166,7 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
             setInviteEmail('')
             setInviteRole('MEMBER')
         } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-            setError(errorMessage)
+            setError(getSafeErrorMessage(err))
         } finally {
             setIsInviting(false)
         }
@@ -187,8 +186,7 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
 
             await fetchWorkspace()
         } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-            setError(errorMessage)
+            setError(getSafeErrorMessage(err))
         }
     }
 
@@ -206,8 +204,7 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
 
             await fetchWorkspace()
         } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-            setError(errorMessage)
+            setError(getSafeErrorMessage(err))
         }
     }
 
@@ -228,8 +225,7 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
 
             await fetchWorkspace()
         } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-            setError(errorMessage)
+            setError(getSafeErrorMessage(err))
         } finally {
             setIsSaving(false)
         }
@@ -250,8 +246,7 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ id: 
 
             router.push('/workspaces')
         } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-            setError(errorMessage)
+            setError(getSafeErrorMessage(err))
         } finally {
             setIsDeleting(false)
         }

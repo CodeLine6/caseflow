@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { getSafeErrorMessage } from '@/lib/api-error'
 import Link from 'next/link'
 import MainLayout from '@/components/layout/MainLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -70,8 +71,7 @@ export default function WorkspacesPage() {
             const data = await response.json()
             setWorkspaces(data.workspaces || [])
         } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-            setError(errorMessage)
+            setError(getSafeErrorMessage(err))
             console.error('Failed to fetch workspaces:', err)
         } finally {
             setLoading(false)
@@ -108,8 +108,7 @@ export default function WorkspacesPage() {
             setNewWorkspaceDescription('')
             setShowCreateModal(false)
         } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-            setError(errorMessage)
+            setError(getSafeErrorMessage(err))
         } finally {
             setIsCreating(false)
         }

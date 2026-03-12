@@ -1,5 +1,6 @@
 'use client'
 
+import { getSafeErrorMessage } from '@/lib/api-error'
 import { use, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -75,7 +76,7 @@ export default function EditAdminCourtPage({ params }: { params: Promise<{ id: s
                 displayBoardUrl: data.displayBoardUrl || '',
             })
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load court')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }
@@ -121,7 +122,7 @@ export default function EditAdminCourtPage({ params }: { params: Promise<{ id: s
 
             router.push('/admin/courts')
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred')
+            setError(getSafeErrorMessage(err))
         } finally {
             setSaving(false)
         }

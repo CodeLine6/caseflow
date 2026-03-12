@@ -1,5 +1,6 @@
 'use client'
 
+import { getSafeErrorMessage } from '@/lib/api-error'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -49,7 +50,7 @@ export default function AdminCourtsPage() {
             if (!res.ok) throw new Error(data.error)
             setCourts(data.courts)
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }
@@ -73,7 +74,7 @@ export default function AdminCourtsPage() {
             // Refresh the list
             await fetchCourts()
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to delete court')
+            setError(getSafeErrorMessage(err))
         } finally {
             setDeleting(null)
         }

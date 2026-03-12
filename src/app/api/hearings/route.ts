@@ -175,6 +175,7 @@ export async function POST(request: Request) {
                     hearingDate: new Date(`${nextDateOfHearing}T12:00:00+05:30`),
                     hearingTime: hearing.hearingTime,
                     hearingType: hearing.hearingType,
+                    description: hearing.description,
                     judgeName: hearing.judgeName,
                     courtNumber: hearing.courtNumber,
                     courtItemNumber: hearing.courtItemNumber,

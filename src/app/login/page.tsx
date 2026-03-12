@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -9,11 +9,32 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Briefcase, Mail, Lock, AlertCircle } from 'lucide-react'
 
+// Maps raw error strings to clean, user-friendly messages.
+// Acts as a safety net so internal details never reach the UI.
+function getErrorMessage(error: string): string {
+  const errorMap: Record<string, string> = {
+    'CredentialsSignin': 'Invalid email or password.',
+    'Please enter email and password': 'Please enter email and password.',
+    'Invalid credentials or account is inactive': 'Invalid credentials or your account is inactive.',
+    'Invalid credentials': 'Invalid email or password.',
+    'Unable to sign in. Please try again later.': 'Unable to sign in. Please try again later.',
+  }
+  return errorMap[error] || 'An unexpected error occurred. Please try again.'
+}
+
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Mail className="w-8 h-8 animate-pulse text-primary" /></div>}>
+      <LoginContent />
+    </Suspense>
+  )
+}
+
+function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
-  const error = searchParams.get('error')
+  const urlError = searchParams.get('error')
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -34,12 +55,12 @@ export default function LoginPage() {
       })
 
       if (result?.error) {
-        setLoginError(result.error)
+        setLoginError(getErrorMessage(result.error))
       } else if (result?.ok) {
         router.push(callbackUrl)
       }
     } catch (err) {
-      setLoginError('An unexpected error occurred')
+      setLoginError('An unexpected error occurred. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -68,10 +89,10 @@ export default function LoginPage() {
 
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {(loginError || error) && (
+            {(loginError || urlError) && (
               <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2 text-sm text-destructive">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                {loginError || 'Authentication failed. Please try again.'}
+                {loginError || (urlError ? getErrorMessage(urlError) : 'Authentication failed. Please try again.')}
               </div>
             )}
 

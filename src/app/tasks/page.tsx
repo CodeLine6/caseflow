@@ -1,5 +1,6 @@
 'use client'
 
+import { getSafeErrorMessage } from '@/lib/api-error'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -43,10 +44,11 @@ export default function TasksPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [statusFilter, setStatusFilter] = useState('')
+    const [scope, setScope] = useState<'all' | 'mine'>('all')
 
     useEffect(() => {
         fetchTasks()
-    }, [statusFilter])
+    }, [statusFilter, scope])
 
     const fetchTasks = async () => {
         try {
@@ -55,13 +57,14 @@ export default function TasksPage() {
             const wsId = localStorage.getItem('activeWorkspaceId')
             if (wsId) params.append('workspaceId', wsId)
             if (statusFilter) params.append('status', statusFilter)
+            if (scope === 'mine') params.append('scope', 'mine')
 
             const res = await fetch(`/api/tasks?${params.toString()}`)
             const data = await res.json()
             if (!res.ok) throw new Error(data.error)
             setTasks(data.tasks)
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred')
+            setError(getSafeErrorMessage(err))
         } finally {
             setLoading(false)
         }
