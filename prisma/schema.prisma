@@ -193,6 +193,7 @@ model Case {
   mainCounselId   String?
   createdById     String
   courtId         Int?
+  courtZone       String?
   clientId        String?
 
   // Relations
@@ -228,6 +229,9 @@ model CaseUpdate {
 
 // ==================== COURTS ====================
 
+// ── Add this field to the existing Court model ──
+// In prisma/schema.prisma, find the Court model and add the zones field:
+
 model Court {
   id              Int       @id @default(autoincrement())
   courtName       String    @unique
@@ -235,7 +239,8 @@ model Court {
   address         String?
   city            String?
   state           String?
-  displayBoardUrl String? // URL to the court's online display board
+  displayBoardUrl String?
+  zones           Json? // Array of { name: string, courtNumbers: string }
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

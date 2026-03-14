@@ -72,9 +72,6 @@ function NewHearingContent() {
         hearingCounselId: '',
         accompaniedByIds: [] as string[],
         notes: '',
-        orderLink: '',
-        additionalRemarks: '',
-        nextDateOfHearing: '',
     })
 
     useEffect(() => {
@@ -82,7 +79,6 @@ function NewHearingContent() {
         fetchCourts()
     }, [])
 
-    // Fetch workspace members when case is selected
     useEffect(() => {
         if (formData.caseId) {
             fetchMembersForCase(formData.caseId)
@@ -120,14 +116,12 @@ function NewHearingContent() {
     const fetchMembersForCase = async (caseId: string) => {
         setLoadingMembers(true)
         try {
-            // Fetch case details to get workspaceId
             const caseRes = await fetch(`/api/cases/${caseId}`)
             if (!caseRes.ok) return
             const caseData = await caseRes.json()
             const workspaceId = caseData.case?.workspaceId || caseData.workspaceId
             if (!workspaceId) return
 
-            // Fetch workspace members
             const membersRes = await fetch(`/api/workspaces/${workspaceId}/members`)
             if (!membersRes.ok) return
             const membersData = await membersRes.json()
@@ -145,7 +139,6 @@ function NewHearingContent() {
     const handleChange = (field: string, value: string) => {
         setFormData(prev => {
             const updated = { ...prev, [field]: value }
-            // If hearing counsel changed, remove them from accompanied list
             if (field === 'hearingCounselId' && value) {
                 updated.accompaniedByIds = prev.accompaniedByIds.filter(id => id !== value)
             }
@@ -165,8 +158,6 @@ function NewHearingContent() {
         try {
             setLoading(true)
 
-            // Store hearingDate at IST noon to prevent UTC day-boundary crossing
-            // The actual time is stored separately in hearingTime text field
             const hearingDateTime = `${formData.hearingDate}T12:00:00+05:30`
 
             const res = await fetch('/api/hearings', {
@@ -184,9 +175,6 @@ function NewHearingContent() {
                     hearingCounselId: formData.hearingCounselId || null,
                     accompaniedByIds: formData.accompaniedByIds.length > 0 ? formData.accompaniedByIds : undefined,
                     notes: formData.notes || null,
-                    orderLink: formData.orderLink || null,
-                    additionalRemarks: formData.additionalRemarks || null,
-                    nextDateOfHearing: formData.nextDateOfHearing || null,
                     status: 'SCHEDULED',
                 }),
             })
@@ -436,38 +424,6 @@ function NewHearingContent() {
                                 </div>
                             )}
 
-                            {/* Order Link */}
-                            <div className="space-y-2">
-                                <Label htmlFor="orderLink" className="flex items-center gap-2">
-                                    <Link className="w-4 h-4" />
-                                    Order Link
-                                </Label>
-                                <Input
-                                    id="orderLink"
-                                    type="url"
-                                    value={formData.orderLink}
-                                    onChange={(e) => handleChange('orderLink', e.target.value)}
-                                    placeholder="Link to order document"
-                                />
-                            </div>
-
-                            {/* Next Hearing Date */}
-                            <div className="space-y-2">
-                                <Label htmlFor="nextDateOfHearing" className="flex items-center gap-2">
-                                    <Calendar className="w-4 h-4" />
-                                    Next Hearing Date
-                                </Label>
-                                <Input
-                                    id="nextDateOfHearing"
-                                    type="date"
-                                    value={formData.nextDateOfHearing}
-                                    onChange={(e) => handleChange('nextDateOfHearing', e.target.value)}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    If provided, a follow-up hearing will be automatically scheduled
-                                </p>
-                            </div>
-
                             {/* Notes */}
                             <div className="space-y-2">
                                 <Label htmlFor="notes" className="flex items-center gap-2">
@@ -483,17 +439,11 @@ function NewHearingContent() {
                                 />
                             </div>
 
-                            {/* Additional Remarks */}
-                            <div className="space-y-2">
-                                <Label htmlFor="additionalRemarks">Additional Remarks</Label>
-                                <Textarea
-                                    id="additionalRemarks"
-                                    value={formData.additionalRemarks}
-                                    onChange={(e) => handleChange('additionalRemarks', e.target.value)}
-                                    placeholder="Any additional remarks..."
-                                    rows={3}
-                                />
-                            </div>
+                            {/* 
+                              NOTE: Order Link, Next Hearing Date, and Additional Remarks are
+                              intentionally excluded from this form. They are post-hearing fields
+                              that belong in the attendance/outcome flow (cause list modal) only.
+                            */}
                         </CardContent>
                     </Card>
 

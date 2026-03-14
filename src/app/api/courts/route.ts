@@ -1,7 +1,10 @@
+// src/app/api/courts/route.ts
+// Replace the existing file with this version (adds zones support to GET and POST)
+
 import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
 
 // GET /api/courts - List all courts
 export async function GET() {
@@ -42,20 +45,33 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json()
-        const { courtName, courtType, address, city, state, displayBoardUrl } = body
+        const { courtName, courtType, address, city, state, displayBoardUrl, zones } = body
 
         if (!courtName || !courtType) {
             return NextResponse.json({ error: 'Court name and type are required' }, { status: 400 })
+        }
+
+        // Validate zones if provided
+        if (zones !== undefined && zones !== null) {
+            if (!Array.isArray(zones)) {
+                return NextResponse.json({ error: 'zones must be an array' }, { status: 400 })
+            }
+            for (const zone of zones) {
+                if (!zone.name || typeof zone.name !== 'string') {
+                    return NextResponse.json({ error: 'Each zone must have a name' }, { status: 400 })
+                }
+            }
         }
 
         const court = await prisma.court.create({
             data: {
                 courtName,
                 courtType,
-                address,
-                city,
-                state,
-                displayBoardUrl,
+                address: address || null,
+                city: city || null,
+                state: state || null,
+                displayBoardUrl: displayBoardUrl || null,
+                zones: zones && zones.length > 0 ? zones : undefined,
             },
         })
 

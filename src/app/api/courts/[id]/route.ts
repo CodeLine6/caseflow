@@ -1,3 +1,6 @@
+// src/app/api/courts/[id]/route.ts
+// Full replacement — adds zones support to GET and PATCH
+
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
@@ -16,11 +19,11 @@ export async function GET(
 
         const { id } = await params
         const courtId = parseInt(id, 10)
-        
+
         if (isNaN(courtId)) {
             return NextResponse.json({ error: 'Invalid court ID' }, { status: 400 })
         }
-        
+
         const court = await prisma.court.findUnique({
             where: { id: courtId },
         })
@@ -44,11 +47,11 @@ export async function PATCH(
     try {
         const { id } = await params
         const courtId = parseInt(id, 10)
-        
+
         if (isNaN(courtId)) {
             return NextResponse.json({ error: 'Invalid court ID' }, { status: 400 })
         }
-        
+
         const { getAdminSession } = await import('@/lib/admin-session')
         const admin = await getAdminSession()
 
@@ -60,7 +63,7 @@ export async function PATCH(
         }
 
         const body = await request.json()
-        const { courtName, courtType, address, city, state, displayBoardUrl } = body
+        const { courtName, courtType, address, city, state, displayBoardUrl, zones } = body
 
         if (!courtName || !courtType) {
             return NextResponse.json(
@@ -69,15 +72,29 @@ export async function PATCH(
             )
         }
 
+        // Validate zones if provided
+        if (zones !== undefined && zones !== null) {
+            if (!Array.isArray(zones)) {
+                return NextResponse.json({ error: 'zones must be an array' }, { status: 400 })
+            }
+            for (const zone of zones) {
+                if (!zone.name || typeof zone.name !== 'string') {
+                    return NextResponse.json({ error: 'Each zone must have a name' }, { status: 400 })
+                }
+            }
+        }
+
         const court = await prisma.court.update({
             where: { id: courtId },
             data: {
                 courtName,
                 courtType,
-                address,
-                city,
-                state,
-                displayBoardUrl,
+                address: address || null,
+                city: city || null,
+                state: state || null,
+                displayBoardUrl: displayBoardUrl || null,
+                // null clears zones; undefined leaves them unchanged; array updates them
+                zones: zones === null ? null : zones && zones.length > 0 ? zones : undefined,
             },
         })
 
@@ -96,11 +113,11 @@ export async function DELETE(
     try {
         const { id } = await params
         const courtId = parseInt(id, 10)
-        
+
         if (isNaN(courtId)) {
             return NextResponse.json({ error: 'Invalid court ID' }, { status: 400 })
         }
-        
+
         const { getAdminSession } = await import('@/lib/admin-session')
         const admin = await getAdminSession()
 

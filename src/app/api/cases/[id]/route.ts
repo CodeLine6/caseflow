@@ -1,3 +1,9 @@
+// src/app/api/cases/[id]/route.ts
+// Changes from original:
+//   GET  — court: true already returns zones; courtZone is returned as part of the case scalar fields automatically
+//   PUT  — courtZone added to update data + server-side zone validation (same pattern as POST)
+//   DELETE — unchanged
+
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -11,7 +17,6 @@ export async function GET(
 ) {
     try {
         const session = await getServerSession(authOptions)
-
         if (!session?.user?.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
@@ -30,6 +35,7 @@ export async function GET(
                         avatar: true,
                     },
                 },
+                // court: true returns all court fields including zones (Json?)
                 court: true,
                 workspace: {
                     select: {
@@ -41,14 +47,14 @@ export async function GET(
                     orderBy: { hearingDate: 'asc' },
                     include: {
                         hearingCounsel: {
-                            select: { id: true, role: true, user: { select: { name: true } } }
+                            select: { id: true, role: true, user: { select: { name: true } } },
                         },
                         attendance: {
                             select: {
                                 memberId: true,
                                 attended: true,
-                                member: { select: { role: true, user: { select: { name: true } } } }
-                            }
+                                member: { select: { role: true, user: { select: { name: true } } } },
+                            },
                         },
                     },
                 },
@@ -79,10 +85,10 @@ export async function GET(
             return NextResponse.json({ error: 'Case not found' }, { status: 404 })
         }
 
-        // Check cases.read permission
         const rbac = await requirePermission(caseData.workspaceId, 'cases.read')
         if (isErrorResponse(rbac)) return rbac
 
+        // caseData already includes courtZone (scalar field) and court.zones (via court: true)
         return NextResponse.json(caseData)
     } catch (error) {
         console.error('Error fetching case:', error)
@@ -97,7 +103,6 @@ export async function PUT(
 ) {
     try {
         const session = await getServerSession(authOptions)
-
         if (!session?.user?.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
@@ -105,7 +110,6 @@ export async function PUT(
         const { id } = await params
         const body = await request.json()
 
-        // Get the case to check workspace access
         const existingCase = await prisma.case.findUnique({
             where: { id },
             select: { workspaceId: true },
@@ -115,15 +119,37 @@ export async function PUT(
             return NextResponse.json({ error: 'Case not found' }, { status: 404 })
         }
 
-        // Check RBAC permission
         const rbac = await requirePermission(existingCase.workspaceId, 'cases.update')
         if (isErrorResponse(rbac)) return rbac
 
-        // If changing counsel assignment, check cases.assign
         if (body.mainCounselId && body.mainCounselId !== session.user.id) {
             const assignRbac = await requirePermission(existingCase.workspaceId, 'cases.assign')
             if (isErrorResponse(assignRbac)) return assignRbac
         }
+
+        // Validate courtZone against the selected court's zones if both are provided
+        if (body.courtZone && body.courtId) {
+            const court = await prisma.court.findUnique({
+                where: { id: body.courtId },
+                select: { zones: true },
+            })
+            const zones = court?.zones as Array<{ name: string }> | null
+            const validZone = zones?.some(z => z.name === body.courtZone)
+            if (!validZone) {
+                return NextResponse.json(
+                    { error: `Zone "${body.courtZone}" does not exist for the selected court` },
+                    { status: 400 }
+                )
+            }
+        }
+
+        // If courtId is being cleared or changed, also clear courtZone unless a new one is supplied
+        const courtZoneValue = (() => {
+            if (!body.courtId) return null               // court cleared → zone must be null
+            if (body.courtZone === '') return null        // explicitly cleared
+            if (body.courtZone) return body.courtZone    // new value provided
+            return null                                  // not supplied → clear it
+        })()
 
         const updatedCase = await prisma.case.update({
             where: { id },
@@ -140,6 +166,7 @@ export async function PUT(
                 caseValue: body.caseValue ? parseFloat(body.caseValue) : null,
                 clientId: body.clientId || null,
                 courtId: body.courtId || null,
+                courtZone: courtZoneValue,   // ← NEW
                 mainCounselId: body.mainCounselId || null,
             },
             include: {
@@ -149,7 +176,6 @@ export async function PUT(
             },
         })
 
-        // Create audit log
         await prisma.auditLog.create({
             data: {
                 action: 'UPDATE',
@@ -168,14 +194,13 @@ export async function PUT(
     }
 }
 
-// DELETE /api/cases/[id] - Delete a case
+// DELETE /api/cases/[id] - Delete a case — unchanged
 export async function DELETE(
     request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const session = await getServerSession(authOptions)
-
         if (!session?.user?.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
@@ -191,13 +216,11 @@ export async function DELETE(
             return NextResponse.json({ error: 'Case not found' }, { status: 404 })
         }
 
-        // Check RBAC permission
         const rbac = await requirePermission(existingCase.workspaceId, 'cases.delete')
         if (isErrorResponse(rbac)) return rbac
 
         await prisma.case.delete({ where: { id } })
 
-        // Create audit log
         await prisma.auditLog.create({
             data: {
                 action: 'DELETE',

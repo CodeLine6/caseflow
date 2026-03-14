@@ -22,6 +22,9 @@ import {
     Monitor,
     MapPin,
     AlertCircle,
+    Plus,
+    X,
+    LayoutGrid,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -34,6 +37,11 @@ const courtTypes = [
     { value: 'CONSUMER', label: 'Consumer Court' },
     { value: 'OTHER', label: 'Other' },
 ]
+
+interface Zone {
+    name: string
+    courtNumbers: string
+}
 
 export default function EditAdminCourtPage({ params }: { params: Promise<{ id: string }> }) {
     const { id: courtId } = use(params)
@@ -50,6 +58,10 @@ export default function EditAdminCourtPage({ params }: { params: Promise<{ id: s
         state: '',
         displayBoardUrl: '',
     })
+
+    const [zones, setZones] = useState<Zone[]>([])
+    const [newZoneName, setNewZoneName] = useState('')
+    const [newZoneCourts, setNewZoneCourts] = useState('')
 
     useEffect(() => {
         if (courtId) {
@@ -75,6 +87,10 @@ export default function EditAdminCourtPage({ params }: { params: Promise<{ id: s
                 state: data.state || '',
                 displayBoardUrl: data.displayBoardUrl || '',
             })
+            // Load existing zones if any
+            if (Array.isArray(data.zones)) {
+                setZones(data.zones)
+            }
         } catch (err) {
             setError(getSafeErrorMessage(err))
         } finally {
@@ -84,6 +100,23 @@ export default function EditAdminCourtPage({ params }: { params: Promise<{ id: s
 
     const handleChange = (field: string, value: string) => {
         setFormData(prev => ({ ...prev, [field]: value }))
+    }
+
+    const addZone = () => {
+        const name = newZoneName.trim()
+        if (!name) return
+        if (zones.some(z => z.name.toLowerCase() === name.toLowerCase())) {
+            setError('A zone with this name already exists')
+            return
+        }
+        setZones(prev => [...prev, { name, courtNumbers: newZoneCourts.trim() }])
+        setNewZoneName('')
+        setNewZoneCourts('')
+        setError('')
+    }
+
+    const removeZone = (index: number) => {
+        setZones(prev => prev.filter((_, i) => i !== index))
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -111,6 +144,7 @@ export default function EditAdminCourtPage({ params }: { params: Promise<{ id: s
                     city: formData.city || null,
                     state: formData.state || null,
                     displayBoardUrl: formData.displayBoardUrl || null,
+                    zones: zones.length > 0 ? zones : null,
                 }),
             })
 
@@ -167,8 +201,8 @@ export default function EditAdminCourtPage({ params }: { params: Promise<{ id: s
                 </Card>
             )}
 
-            {/* Form */}
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} className="space-y-6">
+                {/* ── Court Information ── */}
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-lg">Court Information</CardTitle>
@@ -267,8 +301,101 @@ export default function EditAdminCourtPage({ params }: { params: Promise<{ id: s
                     </CardContent>
                 </Card>
 
+                {/* ── Court Zones ── */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            <LayoutGrid className="w-5 h-5" />
+                            Court Zones
+                            <span className="text-sm font-normal text-muted-foreground ml-1">(optional)</span>
+                        </CardTitle>
+                        <p className="text-sm text-muted-foreground">
+                            Zones group court rooms into physical sections. They appear as options
+                            when creating or editing a case assigned to this court.
+                        </p>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        {/* Existing zones */}
+                        {zones.length > 0 && (
+                            <div className="space-y-2">
+                                {zones.map((zone, index) => (
+                                    <div
+                                        key={index}
+                                        className="flex items-center justify-between p-3 rounded-lg bg-secondary/40 border border-border"
+                                    >
+                                        <div>
+                                            <p className="font-medium text-sm">{zone.name}</p>
+                                            {zone.courtNumbers && (
+                                                <p className="text-xs text-muted-foreground mt-0.5">
+                                                    Courts: {zone.courtNumbers}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                            onClick={() => removeZone(index)}
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Add zone row */}
+                        <div className="flex flex-col gap-3 p-4 rounded-lg border border-dashed border-border bg-secondary/20">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                Add a Zone
+                            </p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <Label htmlFor="zoneName" className="text-xs">Zone Name</Label>
+                                    <Input
+                                        id="zoneName"
+                                        placeholder="e.g., Zone A"
+                                        value={newZoneName}
+                                        onChange={(e) => setNewZoneName(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') { e.preventDefault(); addZone() }
+                                        }}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="zoneCourts" className="text-xs">
+                                        Court Room Numbers
+                                        <span className="text-muted-foreground font-normal ml-1">(optional)</span>
+                                    </Label>
+                                    <Input
+                                        id="zoneCourts"
+                                        placeholder="e.g., 1, 2, 3, DB"
+                                        value={newZoneCourts}
+                                        onChange={(e) => setNewZoneCourts(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') { e.preventDefault(); addZone() }
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="self-start gap-2"
+                                onClick={addZone}
+                                disabled={!newZoneName.trim()}
+                            >
+                                <Plus className="w-4 h-4" />
+                                Add Zone
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+
                 {/* Actions */}
-                <div className="flex justify-end gap-3 mt-6">
+                <div className="flex justify-end gap-3">
                     <Link href="/admin/courts">
                         <Button type="button" variant="outline">
                             Cancel

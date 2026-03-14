@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
     Briefcase, ArrowLeft, Save, Calendar, User, Scale,
-    FileText, IndianRupee, AlertCircle, Loader2
+    FileText, IndianRupee, AlertCircle, Loader2, LayoutGrid
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,8 +23,6 @@ const categories = [
     { value: 'CONSUMER', label: 'Consumer' },
     { value: 'OTHER', label: 'Other' },
 ]
-
-
 
 const caseTypes = [
     { "value": "", "label": "Select" },
@@ -181,18 +179,17 @@ const caseTypes = [
     { "value": "OTHER", "label": "OTHER" }
 ]
 
-
 const priorities = [
     { value: 'HIGH', label: 'High', color: 'text-red-400' },
     { value: 'MEDIUM', label: 'Medium', color: 'text-amber-400' },
     { value: 'LOW', label: 'Low', color: 'text-green-400' },
 ]
 
-
 interface Court {
     id: number
     courtName: string
     courtType: string
+    zones?: Array<{ name: string; courtNumbers: string }> | null
 }
 
 interface ClientOption {
@@ -227,6 +224,7 @@ export default function NewCasePage() {
         opposingCounsel: '',
         caseValue: '',
         courtId: '',
+        courtZone: '',   // ← NEW
         clientId: '',
         mainCounselId: '',
     })
@@ -236,7 +234,10 @@ export default function NewCasePage() {
     const [customCategorySuggestions, setCustomCategorySuggestions] = useState<string[]>([])
     const [customTypeSuggestions, setCustomTypeSuggestions] = useState<string[]>([])
 
-    // Fetch courts and clients on mount
+    // Derive the zones available for the currently selected court
+    const selectedCourt = courts.find(c => String(c.id) === formData.courtId)
+    const availableZones = selectedCourt?.zones ?? []
+
     useEffect(() => {
         const fetchCourts = async () => {
             try {
@@ -267,7 +268,6 @@ export default function NewCasePage() {
     const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
     const [workspaceError, setWorkspaceError] = useState('')
 
-    // Fetch workspace members for main counsel selection
     useEffect(() => {
         if (!activeWorkspaceId) return
         const fetchMembers = async () => {
@@ -291,15 +291,12 @@ export default function NewCasePage() {
         fetchMembers()
     }, [activeWorkspaceId])
 
-    // Fetch custom value suggestions when OTHER is selected
     useEffect(() => {
         if (formData.caseCategory === 'OTHER' && activeWorkspaceId) {
             fetch(`/api/custom-case-values?fieldType=CATEGORY&workspaceId=${activeWorkspaceId}`)
                 .then(res => res.json())
                 .then(data => {
-                    if (data.values) {
-                        setCustomCategorySuggestions(data.values.map((v: any) => v.value))
-                    }
+                    if (data.values) setCustomCategorySuggestions(data.values.map((v: any) => v.value))
                 })
                 .catch(err => console.error('Failed to fetch custom categories:', err))
         }
@@ -310,9 +307,7 @@ export default function NewCasePage() {
             fetch(`/api/custom-case-values?fieldType=TYPE&workspaceId=${activeWorkspaceId}`)
                 .then(res => res.json())
                 .then(data => {
-                    if (data.values) {
-                        setCustomTypeSuggestions(data.values.map((v: any) => v.value))
-                    }
+                    if (data.values) setCustomTypeSuggestions(data.values.map((v: any) => v.value))
                 })
                 .catch(err => console.error('Failed to fetch custom types:', err))
         }
@@ -320,9 +315,15 @@ export default function NewCasePage() {
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target
-        setFormData(prev => ({ ...prev, [name]: value }))
+        setFormData(prev => {
+            const updated = { ...prev, [name]: value }
+            // When court changes, reset the zone selection
+            if (name === 'courtId') {
+                updated.courtZone = ''
+            }
+            return updated
+        })
     }
-
 
     useEffect(() => {
         async function validateWorkspace() {
@@ -342,7 +343,6 @@ export default function NewCasePage() {
                 if (match) {
                     setActiveWorkspaceId(match.id)
                 } else {
-                    // Fallback to first workspace and update localStorage
                     setActiveWorkspaceId(workspaces[0].id)
                     localStorage.setItem('activeWorkspaceId', workspaces[0].id)
                 }
@@ -359,7 +359,7 @@ export default function NewCasePage() {
         setError('')
 
         if (!activeWorkspaceId) {
-            setError(workspaceError || 'No active workspace selected. Please select a workspace from the sidebar first.')
+            setError(workspaceError || 'No active workspace selected.')
             setLoading(false)
             return
         }
@@ -367,16 +367,11 @@ export default function NewCasePage() {
         try {
             const workspaceId = activeWorkspaceId
 
-            // Save custom values if OTHER was selected
             if (formData.caseCategory === 'OTHER' && customCategory.trim()) {
                 await fetch('/api/custom-case-values', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        fieldType: 'CATEGORY',
-                        value: customCategory.trim(),
-                        workspaceId
-                    })
+                    body: JSON.stringify({ fieldType: 'CATEGORY', value: customCategory.trim(), workspaceId }),
                 })
             }
 
@@ -384,11 +379,7 @@ export default function NewCasePage() {
                 await fetch('/api/custom-case-values', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        fieldType: 'TYPE',
-                        value: customCaseType.trim(),
-                        workspaceId
-                    })
+                    body: JSON.stringify({ fieldType: 'TYPE', value: customCaseType.trim(), workspaceId }),
                 })
             }
 
@@ -402,16 +393,14 @@ export default function NewCasePage() {
                     caseType: formData.caseType === 'OTHER' ? customCaseType : formData.caseType,
                     caseValue: formData.caseValue ? parseFloat(formData.caseValue) : null,
                     courtId: formData.courtId ? parseInt(formData.courtId) : null,
+                    courtZone: formData.courtZone || null,   // ← NEW
                     clientId: formData.clientId || null,
                     mainCounselId: formData.mainCounselId || null,
                 }),
             })
 
             const data = await res.json()
-
-            if (!res.ok) {
-                throw new Error(data.error || 'Failed to create case')
-            }
+            if (!res.ok) throw new Error(data.error || 'Failed to create case')
 
             router.push(`/cases/${data.id}`)
         } catch (err) {
@@ -423,20 +412,13 @@ export default function NewCasePage() {
 
     return (
         <div className="min-h-screen bg-background p-8">
-            {/* Background decorations */}
             <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
                 <div className="absolute top-1/4 -left-32 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
                 <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-accent/5 rounded-full blur-3xl" />
             </div>
 
-            {/* Header */}
             <div className="flex items-center gap-4 mb-8">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => router.back()}
-                    className="rounded-full"
-                >
+                <Button variant="ghost" size="icon" onClick={() => router.back()} className="rounded-full">
                     <ArrowLeft className="w-5 h-5" />
                 </Button>
                 <div>
@@ -565,7 +547,6 @@ export default function NewCasePage() {
                                         </div>
                                     </div>
 
-                                    {/* Custom Category Input */}
                                     {formData.caseCategory === 'OTHER' && (
                                         <div className="space-y-2">
                                             <Label htmlFor="customCategory">Specify Category *</Label>
@@ -585,7 +566,6 @@ export default function NewCasePage() {
                                         </div>
                                     )}
 
-                                    {/* Custom Case Type Input */}
                                     {formData.caseType === 'OTHER' && (
                                         <div className="space-y-2">
                                             <Label htmlFor="customCaseType">Specify Type *</Label>
@@ -662,6 +642,8 @@ export default function NewCasePage() {
                                             required
                                         />
                                     </div>
+
+                                    {/* Court */}
                                     <div className="space-y-2">
                                         <Label htmlFor="courtId">Court</Label>
                                         <select
@@ -679,6 +661,36 @@ export default function NewCasePage() {
                                             ))}
                                         </select>
                                     </div>
+
+                                    {/* Court Zone — only shown when a court with zones is selected */}
+                                    {formData.courtId && availableZones.length > 0 && (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="courtZone" className="flex items-center gap-2">
+                                                <LayoutGrid className="w-4 h-4" />
+                                                Court Zone
+                                            </Label>
+                                            <select
+                                                id="courtZone"
+                                                name="courtZone"
+                                                value={formData.courtZone}
+                                                onChange={handleChange}
+                                                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm"
+                                            >
+                                                <option value="">Select a zone...</option>
+                                                {availableZones.map(zone => (
+                                                    <option key={zone.name} value={zone.name}>
+                                                        {zone.name}
+                                                        {zone.courtNumbers ? ` (Courts: ${zone.courtNumbers})` : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <p className="text-xs text-muted-foreground">
+                                                Physical section of the court building
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {/* Client */}
                                     <div className="space-y-2">
                                         <Label htmlFor="clientId">Client</Label>
                                         <select
@@ -696,6 +708,7 @@ export default function NewCasePage() {
                                             ))}
                                         </select>
                                     </div>
+
                                     <PermissionGate permission="cases.assign">
                                         <div className="space-y-2">
                                             <Label htmlFor="mainCounselId">Main Counsel</Label>
@@ -715,6 +728,7 @@ export default function NewCasePage() {
                                             </select>
                                         </div>
                                     </PermissionGate>
+
                                     <div className="space-y-2">
                                         <Label htmlFor="caseValue">Case Value</Label>
                                         <div className="relative">

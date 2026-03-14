@@ -1,3 +1,6 @@
+// src/app/api/cases/route.ts
+// Changes from original: courtZone is now destructured from body and saved on create
+
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -5,11 +8,10 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission, isErrorResponse, filterWorkspacesByPermission } from '@/lib/rbac'
 import type { Prisma } from '@prisma/client'
 
-// GET /api/cases - List all cases for the user's workspace
+// GET /api/cases — unchanged, listed here for completeness
 export async function GET(request: Request) {
     try {
         const session = await getServerSession(authOptions)
-
         if (!session?.user?.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
@@ -20,9 +22,6 @@ export async function GET(request: Request) {
         const category = searchParams.get('category')
         const search = searchParams.get('search')
 
-        // Determine view scope from permissions:
-        // cases.read   → view all cases in workspace
-        // cases.readOwn → view only cases user is associated with
         const [allWorkspaceIds, ownWorkspaceIds] = await Promise.all([
             filterWorkspacesByPermission(session.user.id, 'cases.read'),
             filterWorkspacesByPermission(session.user.id, 'cases.readOwn'),
@@ -33,22 +32,15 @@ export async function GET(request: Request) {
             return NextResponse.json({ cases: [] })
         }
 
-        // Build query filters
         const whereClause: Prisma.CaseWhereInput = {
             workspaceId: workspaceId && allowedWorkspaceIds.includes(workspaceId)
                 ? { in: [workspaceId] }
                 : { in: allowedWorkspaceIds },
         }
 
-        if (status) {
-            whereClause.status = status as Prisma.EnumCaseStatusFilter
-        }
+        if (status) whereClause.status = status as Prisma.EnumCaseStatusFilter
+        if (category) whereClause.caseCategory = category as Prisma.EnumCaseCategoryFilter
 
-        if (category) {
-            whereClause.caseCategory = category as Prisma.EnumCaseCategoryFilter
-        }
-
-        // If user only has readOwn (not read), scope results to associated cases
         const mineConditions: Prisma.CaseWhereInput[] | undefined = !hasViewAll ? [
             { mainCounselId: session.user.id },
             { hearings: { some: { hearingCounsel: { userId: session.user.id } } } },
@@ -62,10 +54,7 @@ export async function GET(request: Request) {
                 { description: { contains: search, mode: 'insensitive' } },
             ]
             if (mineConditions) {
-                whereClause.AND = [
-                    { OR: mineConditions },
-                    { OR: searchConditions },
-                ]
+                whereClause.AND = [{ OR: mineConditions }, { OR: searchConditions }]
             } else {
                 whereClause.OR = searchConditions
             }
@@ -76,53 +65,23 @@ export async function GET(request: Request) {
         const cases = await prisma.case.findMany({
             where: whereClause,
             include: {
-                client: {
-                    select: {
-                        id: true,
-                        name: true,
-                    },
-                },
-                mainCounsel: {
-                    select: {
-                        id: true,
-                        name: true,
-                        avatar: true,
-                    },
-                },
-                court: {
-                    select: {
-                        id: true,
-                        courtName: true,
-                        courtType: true,
-                    },
-                },
-                _count: {
-                    select: {
-                        hearings: true,
-                        documents: true,
-                        tasks: true,
-                    },
-                },
+                client: { select: { id: true, name: true } },
+                mainCounsel: { select: { id: true, name: true, avatar: true } },
+                court: { select: { id: true, courtName: true, courtType: true } },
+                _count: { select: { hearings: true, documents: true, tasks: true } },
                 hearings: {
                     orderBy: { hearingDate: 'desc' },
                     take: 1,
-                    select: {
-                        hearingDate: true,
-                    },
+                    select: { hearingDate: true },
                 },
             },
-            orderBy: {
-                updatedAt: 'desc',
-            },
+            orderBy: { updatedAt: 'desc' },
         })
 
         return NextResponse.json({ cases })
     } catch (error) {
         console.error('Error fetching cases:', error)
-        return NextResponse.json(
-            { error: 'Failed to fetch cases' },
-            { status: 500 }
-        )
+        return NextResponse.json({ error: 'Failed to fetch cases' }, { status: 500 })
     }
 }
 
@@ -130,7 +89,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     try {
         const session = await getServerSession(authOptions)
-
         if (!session?.user?.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
@@ -150,10 +108,10 @@ export async function POST(request: Request) {
             caseValue,
             clientId,
             courtId,
+            courtZone,   // ← NEW
             mainCounselId,
         } = body
 
-        // Validate required fields
         if (!workspaceId || !title || !caseNumber || !caseCategory || !filingDate) {
             return NextResponse.json(
                 { error: 'Missing required fields: workspaceId, title, caseNumber, caseCategory, filingDate' },
@@ -161,21 +119,15 @@ export async function POST(request: Request) {
             )
         }
 
-        // Check RBAC permission
         const rbac = await requirePermission(workspaceId, 'cases.create')
         if (isErrorResponse(rbac)) return rbac
 
-        // If assigning counsel to someone other than self, check cases.assign
         if (mainCounselId && mainCounselId !== session.user.id) {
             const assignRbac = await requirePermission(workspaceId, 'cases.assign')
             if (isErrorResponse(assignRbac)) return assignRbac
         }
 
-        // Check if case number is unique
-        const existingCase = await prisma.case.findUnique({
-            where: { caseNumber },
-        })
-
+        const existingCase = await prisma.case.findUnique({ where: { caseNumber } })
         if (existingCase) {
             return NextResponse.json(
                 { error: 'A case with this number already exists' },
@@ -183,7 +135,22 @@ export async function POST(request: Request) {
             )
         }
 
-        // Create the case
+        // If courtZone was provided, verify it actually exists on the selected court
+        if (courtZone && courtId) {
+            const court = await prisma.court.findUnique({
+                where: { id: courtId },
+                select: { zones: true },
+            })
+            const zones = court?.zones as Array<{ name: string }> | null
+            const validZone = zones?.some(z => z.name === courtZone)
+            if (!validZone) {
+                return NextResponse.json(
+                    { error: `Zone "${courtZone}" does not exist for the selected court` },
+                    { status: 400 }
+                )
+            }
+        }
+
         const newCase = await prisma.case.create({
             data: {
                 title,
@@ -200,6 +167,7 @@ export async function POST(request: Request) {
                 createdById: session.user.id,
                 clientId,
                 courtId,
+                courtZone: courtZone || null,   // ← NEW
                 mainCounselId: mainCounselId || session.user.id,
             },
             include: {
@@ -209,7 +177,6 @@ export async function POST(request: Request) {
             },
         })
 
-        // Create audit log
         await prisma.auditLog.create({
             data: {
                 action: 'CREATE',
@@ -224,9 +191,6 @@ export async function POST(request: Request) {
         return NextResponse.json(newCase, { status: 201 })
     } catch (error) {
         console.error('Error creating case:', error)
-        return NextResponse.json(
-            { error: 'Failed to create case' },
-            { status: 500 }
-        )
+        return NextResponse.json({ error: 'Failed to create case' }, { status: 500 })
     }
 }

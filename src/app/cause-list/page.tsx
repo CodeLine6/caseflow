@@ -5,7 +5,7 @@ import { formatTime12h } from '@/lib/timezone'
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import MainLayout from '@/components/layout/MainLayout'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -13,7 +13,6 @@ import {
     Calendar,
     ChevronLeft,
     ChevronRight,
-    Clock,
     MapPin,
     Briefcase,
     Scale,
@@ -24,9 +23,10 @@ import {
     Loader2,
     Check,
     CheckCircle,
+    Gavel,
 } from 'lucide-react'
 import Link from 'next/link'
-import { format, addDays, subDays, isToday, isSameDay, parseISO } from 'date-fns'
+import { format, addDays, subDays, isToday, isSameDay } from 'date-fns'
 import DisplayBoard from '@/components/DisplayBoard'
 import { usePermissions } from '@/hooks/usePermissions'
 import { PermissionGate } from '@/components/PermissionGate'
@@ -48,6 +48,7 @@ interface Hearing {
     hearingType: string
     status: string
     courtNumber: string
+    judgeName: string | null
     description: string | null
     case: {
         id: string
@@ -103,6 +104,9 @@ export default function CauseListPage() {
     const [modalSaving, setModalSaving] = useState(false)
     const [modalError, setModalError] = useState<string | null>(null)
 
+    // Whether the currently selected date is today
+    const isTodaySelected = isToday(selectedDate)
+
     useEffect(() => {
         fetchCauseList()
     }, [selectedDate])
@@ -129,7 +133,6 @@ export default function CauseListPage() {
         }
     }
 
-    // Determine user's role for a hearing (Bug 7: use .userId for comparisons)
     const getUserRole = (hearing: Hearing) => {
         const userId = session?.user?.id
         if (!userId) return 'none' as const
@@ -138,14 +141,12 @@ export default function CauseListPage() {
         return 'none' as const
     }
 
-    // Open counsel modal (Bug 11: clear state before opening)
     const openCounselModal = (hearing: Hearing) => {
         setCounselModalHearing(hearing)
         setModalError(null)
         setModalLoading(false)
         setModalSaving(false)
 
-        // Pre-populate from existing attendance
         const isSelfAttended = hearing.attendance?.some(
             a => a.memberId === hearing.hearingCounsel?.id && a.attended
         ) ?? false
@@ -153,7 +154,6 @@ export default function CauseListPage() {
 
         const checked: Record<string, boolean> = {}
         hearing.attendance?.forEach(a => {
-            // Skip the counsel's own record
             if (a.memberId !== hearing.hearingCounsel?.id) {
                 checked[a.memberId] = a.attended
             }
@@ -162,7 +162,6 @@ export default function CauseListPage() {
         setOutcomeForm({ outcome: '', orderLink: '', nextDate: '', remarks: '' })
     }
 
-    // Save counsel attendance
     const saveCounselAttendance = async () => {
         if (!counselModalHearing) return
         setModalSaving(true)
@@ -187,7 +186,6 @@ export default function CauseListPage() {
 
             if (res.ok) {
                 const data = await res.json()
-                // Update hearing in local state
                 setHearings(prev => prev.map(h =>
                     h.id === counselModalHearing.id
                         ? {
@@ -209,7 +207,6 @@ export default function CauseListPage() {
         }
     }
 
-    // Self-mark for accompanying counsel
     const markSelfPresent = async (hearingId: string) => {
         try {
             const res = await fetch(`/api/hearings/${hearingId}/attendance`, {
@@ -233,12 +230,7 @@ export default function CauseListPage() {
     const goToNextDay = () => setSelectedDate(prev => addDays(prev, 1))
     const goToToday = () => setSelectedDate(new Date())
 
-    // Generate week dates for the mini calendar strip
     const weekDates = Array.from({ length: 7 }, (_, i) => addDays(subDays(selectedDate, 3), i))
-
-    const formatHearingTime = (time: string | null) => {
-        return formatTime12h(time)
-    }
 
     return (
         <MainLayout>
@@ -257,7 +249,7 @@ export default function CauseListPage() {
                     <Button
                         variant="outline"
                         onClick={goToToday}
-                        className={cn(isToday(selectedDate) && 'bg-primary/10')}
+                        className={cn(isTodaySelected && 'bg-primary/10')}
                     >
                         Today
                     </Button>
@@ -325,7 +317,7 @@ export default function CauseListPage() {
                 {/* Two-column layout: Hearings + Display Board (for today only) */}
                 <div className={cn(
                     'grid gap-6',
-                    isToday(selectedDate) ? 'lg:grid-cols-[1fr_400px]' : 'grid-cols-1'
+                    isTodaySelected ? 'lg:grid-cols-[1fr_400px]' : 'grid-cols-1'
                 )}>
                     {/* Hearings List */}
                     <div className="space-y-4">
@@ -390,12 +382,17 @@ export default function CauseListPage() {
                                             <div className="flex items-start justify-between">
                                                 <div className="flex-1">
                                                     <div className="flex items-start gap-4">
-                                                        {/* Time */}
+                                                        {/* Court Number (replaces hearing time) */}
                                                         <div className="flex flex-col items-center min-w-[80px] p-3 bg-secondary/50 rounded-lg">
-                                                            <Clock className="w-5 h-5 text-primary mb-1" />
+                                                            <Briefcase className="w-5 h-5 text-primary mb-1" />
                                                             <span className="text-lg font-bold">
-                                                                {formatHearingTime(hearing.hearingTime)}
+                                                                #{hearing.courtNumber}
                                                             </span>
+                                                            {hearing.hearingTime && (
+                                                                <span className="text-xs text-muted-foreground mt-0.5">
+                                                                    {formatTime12h(hearing.hearingTime)}
+                                                                </span>
+                                                            )}
                                                         </div>
 
                                                         {/* Details */}
@@ -427,12 +424,13 @@ export default function CauseListPage() {
                                                                     </div>
                                                                 )}
 
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <Briefcase className="w-4 h-4" />
-                                                                    <span>Court #{hearing.courtNumber}</span>
-                                                                </div>
-
-
+                                                                {/* Judge Name */}
+                                                                {hearing.judgeName && (
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <Gavel className="w-4 h-4" />
+                                                                        <span>{hearing.judgeName}</span>
+                                                                    </div>
+                                                                )}
                                                             </div>
 
                                                             {hearing.description && (
@@ -466,8 +464,11 @@ export default function CauseListPage() {
                                                         </div>
                                                     )}
 
-                                                    {/* Role-based CTAs */}
-                                                    {(() => {
+                                                    {/* 
+                                                      CHANGE: Attendance CTAs are only shown when the selected date 
+                                                      is TODAY. For past/future hearings they are hidden entirely.
+                                                    */}
+                                                    {isTodaySelected && (() => {
                                                         const role = getUserRole(hearing)
 
                                                         // Hearing counsel: full attendance modal
@@ -527,7 +528,6 @@ export default function CauseListPage() {
                                                             )
                                                         }
 
-                                                        // Bug 12: Fallback — no counsel assigned, user has hearings.update
                                                         if (!hearing.hearingCounsel && can('hearings.update' as any) && hearing.status !== 'COMPLETED') {
                                                             return (
                                                                 <span className="text-xs text-muted-foreground">
@@ -548,7 +548,7 @@ export default function CauseListPage() {
                     </div>
 
                     {/* Display Board - Only show for today */}
-                    {isToday(selectedDate) && (
+                    {isTodaySelected && (
                         <div className="lg:sticky lg:top-6 h-fit">
                             <DisplayBoard />
                         </div>
@@ -581,7 +581,6 @@ export default function CauseListPage() {
 
                             {/* Modal Body */}
                             <div className="flex-1 overflow-y-auto p-5 space-y-5">
-                                {/* Error message (Bug 14 fix) */}
                                 {modalError && (
                                     <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm flex items-center gap-2">
                                         <AlertCircle className="w-4 h-4 shrink-0" />
@@ -589,7 +588,7 @@ export default function CauseListPage() {
                                     </div>
                                 )}
 
-                                {/* Phase 1: Self attendance */}
+                                {/* Self attendance */}
                                 <div>
                                     <p className="text-sm font-medium mb-2">Your Attendance</p>
                                     <label
@@ -676,7 +675,7 @@ export default function CauseListPage() {
                                     </div>
                                 )}
 
-                                {/* Phase 2: Outcome form (shown when counsel marks self attended) */}
+                                {/* Outcome form — only shown when counsel marks self attended */}
                                 {counselSelfAttended && (
                                     <div className="space-y-3 pt-3 border-t border-border">
                                         <p className="text-sm font-medium">Hearing Outcome</p>
